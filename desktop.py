@@ -218,7 +218,7 @@ def run_find_me():
 
     def worker():
         nonlocal images
-        global highlight_path
+        global highlight_path, matched_paths
         try:
             result = runFindPhotos([str(p) for p in reference_paths], [str(p) for p in images], str(out_dir))
             if not result["success"]:
@@ -321,163 +321,83 @@ def open_results_folder():
 
 
 # UI layout
-header = tk.Frame(root, bg="#0f172a", height=64)
-header.pack(fill=tk.X)
-header.pack_propagate(False)
+frame_left = tk.Frame(root, bg="#112f5d", bd=0, padx=14, pady=14, width=220)
+frame_left.pack_propagate(False)
+frame_left.pack(side=tk.LEFT, fill=tk.Y, padx=12, pady=12)
+frame_right = tk.Frame(root, bg="#163f78", bd=0, padx=14, pady=14)
+frame_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=12, pady=12)
 
-app_title = tk.Label(header, text="📸 FindMeApp", font=("Helvetica", 18, "bold"), bg="#0f172a", fg="#f8fafc")
-app_title.pack(side=tk.LEFT, padx=20)
+logo = tk.Label(frame_left, text="FindMeApp 桌面版", font=("Helvetica", 18, "bold"), bg="#112f5d", fg="#f2f8ff")
+logo.pack(anchor=tk.W, pady=(0, 10))
 
-session_info = tk.Label(header, text="Session: 67af96d4...", font=("Helvetica", 10), bg="#0f172a", fg="#94a3b8")
-session_info.pack(side=tk.RIGHT, padx=20)
+btn_ref = tk.Button(frame_left, text="选择参考图像 (1-3 张)", command=select_references, width=24, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", disabledforeground="#ffffff", relief="flat", bd=0, padx=10, pady=8, font=("Helvetica", 12, "bold"), highlightthickness=0)
+btn_ref.pack(fill=tk.X, pady=4)
 
-body = tk.Frame(root, bg="#0f172a")
-body.pack(fill=tk.BOTH, expand=True)
+btn_target = tk.Button(frame_left, text="选择待识别文件夹", command=select_target_folder, width=24, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", disabledforeground="#ffffff", relief="flat", bd=0, padx=10, pady=8, font=("Helvetica", 12, "bold"), highlightthickness=0)
+btn_target.pack(fill=tk.X, pady=4)
 
-sidebar = tk.Frame(body, bg="#111827", width=220)
-sidebar.pack(side=tk.LEFT, fill=tk.Y)
-sidebar.pack_propagate(False)
+find_button = tk.Button(frame_left, text="开始识别", command=run_find_me, width=24, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", disabledforeground="#ffffff", relief="flat", bd=0, padx=10, pady=8, font=("Helvetica", 12, "bold"), highlightthickness=0)
+find_button.pack(fill=tk.X, pady=16)
 
-nav_title = tk.Label(sidebar, text="导航", font=("Helvetica", 12, "bold"), bg="#111827", fg="#cbd5e1")
-nav_title.pack(anchor=tk.W, padx=18, pady=(18, 8))
+highlight_button = tk.Button(frame_left, text="生成高光视频", command=generate_highlight, width=24, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", disabledforeground="#ffffff", relief="flat", bd=0, padx=10, pady=8, font=("Helvetica", 12, "bold"), highlightthickness=0, state=tk.DISABLED)
+highlight_button.pack(fill=tk.X, pady=4)
 
-nav_buttons = ["Setup", "找我", "一键成片", "轨迹回忆"]
-for text in nav_buttons:
-    btn = tk.Button(
-        sidebar,
-        text=text,
-        width=18,
-        bg="#1e293b",
-        fg="#e2e8f0",
-        activebackground="#334155",
-        activeforeground="#ffffff",
-        relief="flat",
-        bd=0,
-        padx=10,
-        pady=10,
-        font=("Helvetica", 11, "bold"),
-    )
-    btn.pack(fill=tk.X, padx=12, pady=6)
+highlight_count_frame = tk.Frame(frame_left, bg="#112f5d")
+highlight_count_frame.pack(fill=tk.X, pady=(2, 6))
+tk.Label(highlight_count_frame, text="照片数量（最多 20）", bg="#112f5d", fg="#ffffff", font=("Helvetica", 10)).pack(anchor=tk.W)
+highlight_count_spinbox = tk.Spinbox(highlight_count_frame, from_=1, to=MAX_HIGHLIGHT_PHOTOS, textvariable=highlight_count_var, width=8, justify=tk.CENTER)
+highlight_count_spinbox.pack(anchor=tk.W, pady=(2, 0))
 
-content = tk.Frame(body, bg="#0f172a", padx=20, pady=20)
-content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+save_video_button = tk.Button(frame_left, text="另存高光视频", command=save_highlight_video, width=24, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", disabledforeground="#ffffff", relief="flat", bd=0, padx=10, pady=8, font=("Helvetica", 12, "bold"), highlightthickness=0, state=tk.DISABLED)
+save_video_button.pack(fill=tk.X, pady=4)
 
-status_card = tk.Frame(content, bg="#15233b", bd=0, relief=tk.FLAT, padx=18, pady=16)
-status_card.pack(fill=tk.X, pady=(0, 16))
-status_label = tk.Label(status_card, textvariable=status_var, bg="#15233b", fg="#a7f3d0", font=("Helvetica", 12), wraplength=760, justify=tk.LEFT)
-status_label.pack(anchor=tk.W)
+open_results_button = tk.Button(frame_left, text="打开结果文件夹", command=open_results_folder, width=24, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", disabledforeground="#ffffff", relief="flat", bd=0, padx=10, pady=8, font=("Helvetica", 12, "bold"), highlightthickness=0, state=tk.DISABLED)
+open_results_button.pack(fill=tk.X, pady=4)
 
-main_card = tk.Frame(content, bg="#111827", bd=0, relief=tk.FLAT, padx=24, pady=24)
-main_card.pack(fill=tk.BOTH, expand=True)
+status_label = tk.Label(frame_left, textvariable=status_var, bg="#112f5d", fg="#ffffff", wraplength=240, justify=tk.LEFT)
+status_label.pack(fill=tk.X, pady=(24, 0))
 
-section_title = tk.Label(main_card, text="上传素材", font=("Helvetica", 16, "bold"), bg="#111827", fg="#f8fafc")
-section_title.pack(anchor=tk.W)
-section_desc = tk.Label(main_card, text="上传 1-3 张本人参考自拍，再上传要搜索的照片和视频。", font=("Helvetica", 11), bg="#111827", fg="#cbd5e1", wraplength=760, justify=tk.LEFT)
-section_desc.pack(anchor=tk.W, pady=(6, 16))
+info_frame = tk.Frame(frame_left, bg="#112f5d")
+info_frame.pack(fill=tk.X, pady=(20, 0))
 
-steps_frame = tk.Frame(main_card, bg="#0f172a")
-steps_frame.pack(fill=tk.X, pady=(0, 16))
-
-ref_step = tk.Frame(steps_frame, bg="#1e293b", bd=0, relief=tk.FLAT, padx=18, pady=18)
-ref_step.pack(fill=tk.X, pady=(0, 12))
-ref_step_title = tk.Label(ref_step, text="第一步 — 参考自拍 (1-3 张)", font=("Helvetica", 13, "bold"), bg="#1e293b", fg="#f8fafc")
-ref_step_title.pack(anchor=tk.W)
-ref_step_info = tk.Label(ref_step, text="请选择清晰的正面自拍，作为人脸识别参考。", font=("Helvetica", 10), bg="#1e293b", fg="#94a3b8")
-ref_step_info.pack(anchor=tk.W, pady=(4, 12))
-
-btn_ref = tk.Button(ref_step, text="选择参考图像", command=select_references, width=26, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=10, font=("Helvetica", 11, "bold"), highlightthickness=0)
-btn_ref.pack(anchor=tk.W)
-
-selected_refs_frame = tk.Frame(ref_step, bg="#1e293b")
-selected_refs_frame.pack(fill=tk.X, pady=(14, 0))
-
-ref_preview_label = tk.Label(selected_refs_frame, text="已选参考自拍：", font=("Helvetica", 11), bg="#1e293b", fg="#e2e8f0")
-ref_preview_label.pack(anchor=tk.W)
-
-selected_refs_container = tk.Frame(selected_refs_frame, bg="#1e293b")
-selected_refs_container.pack(fill=tk.X, pady=(8, 0))
-
-folder_step = tk.Frame(steps_frame, bg="#1e293b", bd=0, relief=tk.FLAT, padx=18, pady=18)
-folder_step.pack(fill=tk.X)
-folder_step_title = tk.Label(folder_step, text="第二步 — 搜索素材", font=("Helvetica", 13, "bold"), bg="#1e293b", fg="#f8fafc")
-folder_step_title.pack(anchor=tk.W)
-folder_step_info = tk.Label(folder_step, text="选择包含待识别图片的文件夹，程序将递归扫描子目录。", font=("Helvetica", 10), bg="#1e293b", fg="#94a3b8")
-folder_step_info.pack(anchor=tk.W, pady=(4, 12))
-
-btn_target = tk.Button(folder_step, text="选择待识别文件夹", command=select_target_folder, width=26, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=10, font=("Helvetica", 11, "bold"), highlightthickness=0)
-btn_target.pack(anchor=tk.W)
-
-controls_frame = tk.Frame(main_card, bg="#111827")
-controls_frame.pack(fill=tk.X, pady=(12, 0))
-
-left_controls = tk.Frame(controls_frame, bg="#111827")
-left_controls.pack(side=tk.LEFT, fill=tk.X, expand=True)
-right_controls = tk.Frame(controls_frame, bg="#111827")
-right_controls.pack(side=tk.RIGHT, fill=tk.X)
-
-find_button = tk.Button(left_controls, text="开始识别", command=run_find_me, width=16, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=10, font=("Helvetica", 11, "bold"), highlightthickness=0)
-find_button.pack(side=tk.LEFT, padx=(0, 12))
-
-highlight_button = tk.Button(left_controls, text="生成高光视频", command=generate_highlight, width=16, bg="#7a1521", fg="#ffffff", activebackground="#8e1d28", activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=10, font=("Helvetica", 11, "bold"), highlightthickness=0, state=tk.DISABLED)
-highlight_button.pack(side=tk.LEFT)
-
-highlight_count_frame = tk.Frame(right_controls, bg="#111827")
-highlight_count_frame.pack(anchor=tk.E)
-tk.Label(highlight_count_frame, text="照片数量（最多 20）", bg="#111827", fg="#cbd5e1", font=("Helvetica", 10)).pack(anchor=tk.E)
-highlight_count_spinbox = tk.Spinbox(highlight_count_frame, from_=1, to=MAX_HIGHLIGHT_PHOTOS, textvariable=highlight_count_var, width=6, justify=tk.CENTER)
-highlight_count_spinbox.pack(anchor=tk.E, pady=(4, 0))
-
-bottom_card = tk.Frame(main_card, bg="#1e293b", bd=0, relief=tk.FLAT, padx=18, pady=18)
-bottom_card.pack(fill=tk.BOTH, expand=True, pady=(16, 0))
-
-summary_title = tk.Label(bottom_card, text="当前状态", font=("Helvetica", 14, "bold"), bg="#1e293b", fg="#f8fafc")
-summary_title.pack(anchor=tk.W)
-
-summary_info = tk.Frame(bottom_card, bg="#1e293b")
-summary_info.pack(fill=tk.X, pady=(10, 0))
-
-label_refs = tk.Label(summary_info, textvariable=refs_var, anchor=tk.W, bg="#1e293b", fg="#e2e8f0")
+label_refs = tk.Label(info_frame, textvariable=refs_var, anchor=tk.W, bg="#112f5d", fg="#f2f8ff")
 label_refs.pack(fill=tk.X, pady=2)
-label_target = tk.Label(summary_info, textvariable=target_var, anchor=tk.W, bg="#1e293b", fg="#e2e8f0")
+label_target = tk.Label(info_frame, textvariable=target_var, anchor=tk.W, bg="#112f5d", fg="#f2f8ff")
 label_target.pack(fill=tk.X, pady=2)
-label_matched = tk.Label(summary_info, textvariable=matched_var, anchor=tk.W, bg="#1e293b", fg="#cbd5e1")
-label_matched.pack(fill=tk.X, pady=2)
-label_results_dir = tk.Label(summary_info, textvariable=results_dir_var, anchor=tk.W, bg="#1e293b", fg="#cbd5e1")
+label_results_dir = tk.Label(info_frame, textvariable=results_dir_var, anchor=tk.W, bg="#112f5d", fg="#f2f8ff")
 label_results_dir.pack(fill=tk.X, pady=2)
+label_matched = tk.Label(info_frame, textvariable=matched_var, anchor=tk.W, bg="#112f5d", fg="#f2f8ff")
+label_matched.pack(fill=tk.X, pady=2)
 
-match_panel = tk.Frame(content, bg="#111827", bd=0, relief=tk.FLAT, padx=24, pady=24)
-match_panel.pack(fill=tk.BOTH, expand=True, pady=(16, 0))
+# Right side: match list + preview
+right_top = tk.Label(frame_right, text="匹配结果预览", font=("Helvetica", 14, "bold"), bg="#163f78", fg="#f2f8ff")
+right_top.pack(anchor=tk.W)
 
-match_title = tk.Label(match_panel, text="找我 — 识别结果", font=("Helvetica", 14, "bold"), bg="#111827", fg="#f8fafc")
-match_title.pack(anchor=tk.W)
-match_sub = tk.Label(match_panel, text="以下是包含你本人照片的识别结果，点击文件名查看预览。", font=("Helvetica", 10), bg="#111827", fg="#94a3b8", wraplength=760, justify=tk.LEFT)
-match_sub.pack(anchor=tk.W, pady=(6, 12))
+list_frame = tk.Frame(frame_right, bg="#163f78")
+list_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 6))
 
-list_frame = tk.Frame(match_panel, bg="#0f172a")
-list_frame.pack(fill=tk.BOTH, expand=True)
-
-match_listbox = tk.Listbox(list_frame, bg="#0f172a", fg="#f8fafc", selectbackground="#334155", activestyle="none", bd=0, highlightthickness=0)
+match_listbox = tk.Listbox(list_frame, bg="#eaf2fb", fg="#0f3c6d", selectbackground="#bfd8ff", activestyle="none")
 match_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 match_listbox.bind("<<ListboxSelect>>", on_match_select)
 
-scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL, command=match_listbox.yview, bg="#0f172a")
+scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL, command=match_listbox.yview)
 scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 match_listbox.config(yscrollcommand=scrollbar.set)
 
-preview_frame = tk.Frame(match_panel, bg="#0f172a", bd=1, relief=tk.SOLID)
-preview_frame.pack(fill=tk.BOTH, expand=True, pady=(14, 0))
+preview_frame = tk.Frame(frame_right, bg="#bfdcff", bd=1, relief=tk.SOLID)
+preview_frame.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
-preview_label = tk.Label(preview_frame, text="选择匹配结果以预览图片", bg="#0f172a", fg="#f8fafc", anchor="center")
-preview_label.pack(fill=tk.X, padx=12, pady=(12, 10))
+preview_label = tk.Label(preview_frame, text="选择匹配结果以预览图片", bg="#bfdcff", fg="#0f3c6d", anchor="center")
+preview_label.pack(fill=tk.X, padx=8, pady=(8, 6))
 
-preview_canvas = tk.Canvas(preview_frame, bg="#0f172a", highlightthickness=0)
+preview_canvas = tk.Canvas(preview_frame, bg="#eaf2fb", highlightthickness=0)
 preview_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
 preview_scrollbar = tk.Scrollbar(preview_frame, orient=tk.VERTICAL, command=preview_canvas.yview)
 preview_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 preview_canvas.configure(yscrollcommand=preview_scrollbar.set)
 
-preview_content = tk.Frame(preview_canvas, bg="#0f172a")
+preview_content = tk.Frame(preview_canvas, bg="#ffffff")
 preview_window_id = preview_canvas.create_window((0, 0), window=preview_content, anchor="nw")
 preview_canvas.bind("<Configure>", lambda event: preview_canvas.itemconfig(preview_window_id, width=event.width))
 preview_content.bind("<Configure>", lambda event: preview_canvas.configure(scrollregion=preview_canvas.bbox("all")))
