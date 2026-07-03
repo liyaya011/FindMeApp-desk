@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FindMeApp</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- Lightbox overlay -->
+<div id="lightbox" class="lightbox">
+    <span id="lightboxClose" class="lightbox-close">✕</span>
+    <img id="lightboxImg" src="" alt="">
+</div>
+
+<header>
+    <span style="font-size:24px">📸</span>
+    <h1>FindMeApp</h1>
+    <span id="sessionIdDisplay" style="margin-left:auto;font-size:12px;color:var(--muted);"></span>
+</header>
+
+<div class="app">
+    <!-- Sidebar navigation -->
+    <nav class="sidebar">
+        <div class="nav-item active" data-tab="setup">
+            <span class="icon">🏠</span><span class="label">Setup</span>
+        </div>
+        <div class="nav-item" data-tab="results">
+            <span class="icon">🔍</span><span class="label">找我</span>
+        </div>
+        <div class="nav-item" data-tab="highlight">
+            <span class="icon">🎬</span><span class="label">一键成片</span>
+        </div>
+        <div class="nav-item" data-tab="map">
+            <span class="icon">🗺</span><span class="label">轨迹回忆</span>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="content">
+
+        <!-- Global status bar -->
+        <div id="statusBar" class="status-bar">
+            <div class="spinner"></div>
+            <span class="status-msg"></span>
+        </div>
+
+        <!-- ── SETUP ── -->
+        <section id="setupPanel" class="tab-panel active">
+            <h2>上传素材</h2>
+            <p class="subtitle">上传 1–3 张本人参考自拍，再上传要搜索的照片和视频。</p>
+
+            <div class="section">
+                <div class="section-title">第一步 — 参考自拍（1–3 张）</div>
+                <div id="refZone" class="upload-zone">
+                    <input id="refInput" type="file" accept="image/*,.heic" multiple>
+                    <div class="up-icon">🤳</div>
+                    <p><strong>拖放自拍到此处</strong>或点击选择</p>
+                    <p style="margin-top:6px;font-size:12px">选择面部清晰的正面照片</p>
+                </div>
+                <div id="refCount" style="color:var(--muted);font-size:12px;margin-top:6px;"></div>
+                <div id="refPreview" style="display:flex;flex-wrap:wrap;margin-top:8px;"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">第二步 — 要搜索的素材</div>
+                <div id="mediaZone" class="upload-zone">
+                    <input id="mediaInput" type="file" accept="image/*,video/*,.heic,.mov,.mp4" multiple>
+                    <div class="up-icon">📂</div>
+                    <p><strong>拖放照片和视频到此处</strong>或点击选择</p>
+                    <p style="margin-top:6px;font-size:12px">支持 JPG、PNG、MP4、MOV 等格式</p>
+                </div>
+                <div id="mediaCount" style="color:var(--muted);font-size:12px;margin-top:6px;"></div>
+                <div id="mediaFileList" class="file-list"></div>
+            </div>
+
+            <button id="findBtn" class="btn btn-primary" style="margin-top:8px;">
+                🔍 开始识别
+            </button>
+            <div id="findHint" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
+        </section>
+
+        <!-- ── RESULTS ── -->
+        <section id="resultsPanel" class="tab-panel">
+            <h2>找我 — 识别结果</h2>
+            <p class="subtitle">以下是包含你本人的照片和视频片段，点击照片可放大查看。</p>
+
+            <div class="section">
+                <div class="section-title">📷 我的照片</div>
+                <div id="photoStat" class="info-box" style="margin-bottom:12px;">请先完成"开始识别"。</div>
+                <div id="photoGrid" class="photo-grid"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🎬 我的视频片段</div>
+                <div id="clipStat" class="info-box" style="margin-bottom:12px;">请先完成"开始识别"。</div>
+                <div id="clipList" class="clip-list"></div>
+            </div>
+        </section>
+
+        <!-- ── HIGHLIGHT ── -->
+        <section id="highlightPanel" class="tab-panel">
+            <h2>一键成片</h2>
+            <p class="subtitle">从匹配的照片和视频片段自动生成高光短视频。</p>
+
+            <button id="highlightBtn" class="btn btn-primary">🎬 生成高光视频</button>
+            <div id="highlightStatus" style="margin-top:12px;color:var(--muted);font-size:13px;"></div>
+            <video id="highlightVideo" controls style="display:none;margin-top:16px;width:100%;max-width:720px;border-radius:12px;background:#000;"></video>
+        </section>
+
+        <!-- ── TRAVEL MAP ── -->
+        <section id="mapPanel" class="tab-panel">
+            <h2>轨迹回忆地图</h2>
+            <p class="subtitle">按时间顺序展示照片的拍摄地点，点击播放回放旅行轨迹。</p>
+
+            <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+                <button id="loadMapBtn" class="btn btn-primary">🗺 加载地图</button>
+                <button id="playRouteBtn" class="btn btn-secondary" style="display:none;">▶ 播放轨迹</button>
+            </div>
+            <div id="mapInfo" style="color:var(--muted);font-size:13px;margin-bottom:12px;"></div>
+            <div id="mapContainer"></div>
+        </section>
+
+        <!-- Fullscreen photo overlay for route playback -->
+        <div id="routeOverlay" class="route-overlay">
+            <div class="route-overlay-img-wrap">
+                <img id="routeOverlayImg" src="" alt="">
+            </div>
+            <div id="routeOverlayCaption" class="route-overlay-caption"></div>
+            <div id="routeOverlayProgress" class="route-overlay-progress">
+                <div id="routeOverlayBar" class="route-overlay-bar"></div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

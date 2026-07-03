@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m venv /Users/jacksun/MyProjects/FindMeApp/.venv)",
+      "Bash(/Users/jacksun/MyProjects/FindMeApp/.venv/bin/pip install *)",
+      "Bash(/Users/jacksun/MyProjects/FindMeApp/.venv/bin/pip index *)",
+      "Bash(python3.12 --version)",
+      "Bash(python3.11 --version)",
+      "Bash(python3.11 -m venv /Users/jacksun/MyProjects/FindMeApp/.venv)",
+      "Bash(/Users/jacksun/MyProjects/FindMeApp/.venv/bin/python --version)",
+      "Bash(echo \"venv created with $\\(/Users/jacksun/MyProjects/FindMeApp/.venv/bin/python --version\\)\")",
+      "Bash(PYTHONPATH=. .venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(PYTHONPATH=/Users/jacksun/MyProjects/FindMeApp .venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --log-level info)",
+      "Bash(pkill -f \"uvicorn src.main\")",
+      "Bash(curl -s http://localhost:8000/api/config)",
+      "Bash(.venv/bin/python -c \"import onnxruntime, cv2, PIL, imagehash, exifread, numpy; print\\('onnxruntime', onnxruntime.__version__\\); print\\('cv2', cv2.__version__\\); print\\('PIL', PIL.__version__\\); print\\('numpy', numpy.__version__\\)\")",
+      "Read(//Users/jacksun/.insightface/models/**)",
+      "Read(//Users/jacksun/MyProjects/InsightFaceDemo/buffalo_l/**)",
+      "Bash(.venv/bin/python -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\)\\) for f in ['src/playbooks/findVideos.py','src/scripts/videoClip.py','src/routes.py']]; print\\('syntax OK'\\)\")",
+      "Bash(PYTHONUNBUFFERED=1 .venv/bin/uvicorn src.main:app --host 127.0.0.1 --port 8000 --log-level info)",
+      "Bash(curl -s http://127.0.0.1:8000/health)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/sessions)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/sessions/5edec135-3ce2-49f3-8fca-18d01bd31da4/references -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/reference/ref_a20928e3.jpg -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/reference/ref_85d010d4.jpg.jpg)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/sessions/5edec135-3ce2-49f3-8fca-18d01bd31da4/media -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/meterialse/IMG_1574.JPG -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/meterialse/IMG_6284.JPG -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/meterialse/ef17b67c64845c6c45188892067489bf.JPG -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/meterialse/mat_6cb5bbf3.jpg -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/meterialse/mat_f734063a.jpg -F files=@/Users/jacksun/MyProjects/FindMe-mvpData/upload/meterialse/MJ_1730634752.MOV)",
+      "Bash(ffprobe -v error -show_entries format=duration,size,bit_rate -show_entries stream=codec_name,codec_type,width,height /Users/jacksun/MyProjects/FindMeApp/data/sessions/5edec135-3ce2-49f3-8fca-18d01bd31da4/results/highlight/highlight.mp4)"
+    ]
+  }
+}

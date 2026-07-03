@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Upload Test</title>
+<style>
+body { font-family: sans-serif; padding: 40px; background: #111; color: #eee; }
+.zone { border: 2px dashed #555; border-radius: 12px; padding: 40px; text-align: center;
+        cursor: pointer; margin-bottom: 16px; background: #1a1a2e; }
+.zone:hover { border-color: #6c63ff; }
+#log { background: #222; padding: 16px; border-radius: 8px; font-size: 13px;
+       white-space: pre-wrap; min-height: 80px; }
+img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; margin: 4px; }
+</style>
+</head>
+<body>
+<h2>File Input Test</h2>
+
+<!-- Method: label wraps input (most reliable cross-browser) -->
+<label style="display:block">
+  <div class="zone">点击此处选择文件（Method: label wraps input）</div>
+  <input id="testInput" type="file" accept="image/*" multiple style="display:none">
+</label>
+
+<div id="log">等待选择文件…</div>
+<div id="preview"></div>
+
+<script>
+const input = document.getElementById('testInput');
+const log   = document.getElementById('log');
+const prev  = document.getElementById('preview');
+
+log.textContent = 'input element found: ' + !!input + '\n';
+
+input.addEventListener('change', function() {
+    log.textContent += 'change event fired! files.length = ' + this.files.length + '\n';
+    prev.innerHTML = '';
+    Array.from(this.files).forEach(f => {
+        log.textContent += '  file: ' + f.name + ' type=' + f.type + ' size=' + f.size + '\n';
+        if (f.type.startsWith('image/') || f.name.match(/\.(jpg|jpeg|png|heic|webp)$/i)) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(f);
+            prev.appendChild(img);
+        }
+    });
+    this.value = '';  // reset so same file can be re-selected
+});
+
+log.textContent += 'change listener attached\n';
+</script>
+</body>
+</html>
