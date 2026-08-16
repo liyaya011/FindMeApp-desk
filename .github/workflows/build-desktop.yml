@@ -1,0 +1,114 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  # ====================== macOS Build ======================
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install tkinter (system)
+        run: brew install python-tk@3.11
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download insightface model
+        run: |
+          source .venv/bin/activate
+          mkdir -p assets/models
+          python -c "from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')"
+
+      - name: Build .app
+        run: |
+          source .venv/bin/activate
+          export PYINSTALLER_CONFIG_DIR=$PWD/.pyinstaller_cache
+          pyinstaller build.spec --noconfirm
+
+      - name: Create ZIP artifact
+        run: |
+          cd dist
+          zip -r FindMeApp-macOS.zip FindMeApp.app
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FindMeApp-macOS-arm64
+          path: dist/FindMeApp-macOS.zip
+          retention-days: 30
+
+      - name: Attach to release (if tagged)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/FindMeApp-macOS.zip
+          draft: true
+
+  # ====================== Windows Build ======================
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y
+        continue-on-error: true
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install --upgrade pip
+          .venv\Scripts\pip install -r requirements.txt
+
+      - name: Download insightface model
+        run: |
+          mkdir -p assets\models
+          .venv\Scripts\python.exe -c "from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')"
+        shell: pwsh
+
+      - name: Build .exe
+        run: |
+          .venv\Scripts\python.exe -m PyInstaller build.spec --noconfirm
+        shell: pwsh
+
+      - name: Create ZIP artifact
+        run: |
+          Compress-Archive -Path dist\FindMeApp -DestinationPath dist\FindMeApp-Windows-x64.zip
+        shell: pwsh
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FindMeApp-Windows-x64
+          path: dist/FindMeApp-Windows-x64.zip
+          retention-days: 30
+
+      - name: Attach to release (if tagged)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/FindMeApp-Windows-x64.zip
+          draft: true

@@ -352,16 +352,32 @@ async function loadTravelMap() {
     if (!sessionId) { alert('请先完成"找我"步骤。'); return; }
 
     $("mapInfo").textContent = "正在加载地图数据…";
-    const data = await fetch(API(`/sessions/${sessionId}/map`)).then(r => r.json());
+    let data;
+    try {
+        const resp = await fetch(API(`/sessions/${sessionId}/map`));
+        if (!resp.ok) {
+            $("mapInfo").textContent = `加载失败：${resp.status} ${resp.statusText}`;
+            return;
+        }
+        data = await resp.json();
+    } catch (e) {
+        $("mapInfo").textContent = `加载失败：${e.message}`;
+        return;
+    }
 
     if (!data.map_points?.length) {
-        $("mapInfo").textContent = "找到的照片中没有 GPS 信息。";
+        $("mapInfo").textContent = data.total === 0
+            ? "暂无可用的照片 — 请先完成「找我」识别，或先生成高光视频。"
+            : "找到的照片中没有 GPS 信息。";
         return;
     }
 
     const valid = data.map_points.filter(p => p.has_gps);
     $("mapInfo").textContent = `共 ${data.total} 个点位，${data.missing_gps_count} 个缺少 GPS`;
-    if (!valid.length) return;
+    if (!valid.length) {
+        $("mapInfo").textContent += " — 所有照片均缺少 GPS，无法绘制地图。";
+        return;
+    }
 
     if (amapReady) {
         try { await amapReady; }

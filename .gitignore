@@ -9,3 +9,17 @@ data/sessions/
 build/
 dist/
 *.egg-info/
+# Bundled model files (330MB) — created by build script, not committed
+assets/models/
+
+# PyInstaller cache
+.pyinstaller_cache/
+
+# Local logs / pids from desktop runs
+.claude/*.log
+.claude/*.pid
+
+# Temp / scratch files
+desktopDraw.rtf
+desktop_副本.py
+
