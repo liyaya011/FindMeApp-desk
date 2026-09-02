@@ -1,9 +1,26 @@
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+
+
+def _getDataDir() -> Path:
+    """Return a writable, per-user data directory for source and packaged runs."""
+    override = os.getenv("FINDMEAPP_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+    if not getattr(sys, "frozen", False):
+        return BASE_DIR / "data"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "FindMeApp"
+    if sys.platform == "win32":
+        return Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "FindMeApp"
+    return Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "FindMeApp"
+
+
+DATA_DIR = _getDataDir()
 SESSIONS_DIR = DATA_DIR / "sessions"
 
 load_dotenv(BASE_DIR / "config" / ".env")

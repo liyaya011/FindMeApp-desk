@@ -7,6 +7,7 @@ from pathlib import Path
 
 from src.utils.logger import getLogger
 from src.utils.result import makeResult
+from src.utils.ffmpeg import getFfmpegPath
 
 log = getLogger(__name__)
 
@@ -23,8 +24,11 @@ def cutClip(videoPath: str, startS: float, endS: float, outputPath: str, timeout
             return makeResult(False, error=f"Invalid clip range: {startS}–{endS}", startTime=startTime)
 
         Path(outputPath).parent.mkdir(parents=True, exist_ok=True)
+        ffmpegPath = getFfmpegPath()
+        if not ffmpegPath:
+            return makeResult(False, error="ffmpeg is not available", startTime=startTime)
         cmd = [
-            "ffmpeg", "-y",
+            ffmpegPath, "-y",
             "-ss", str(startS),
             "-i", str(videoPath),
             "-t", str(durationS),

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from src.utils.logger import getLogger
 from src.utils.result import makeResult
+from src.utils.ffmpeg import getFfmpegPath
 
 log = getLogger(__name__)
 
@@ -40,7 +41,10 @@ def buildSlideshow(photoPaths: list[str], outputPath: str, slideDurationS: float
                            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", str(outputPath)]
         if audioPath:
             cmd = ["-i", str(audioPath)] + cmd + ["-shortest"]
-        cmd = ["ffmpeg"] + cmd
+        ffmpegPath = getFfmpegPath()
+        if not ffmpegPath:
+            return makeResult(False, error="ffmpeg is not available", startTime=startTime)
+        cmd = [ffmpegPath] + cmd
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeoutS)
         if result.returncode != 0:
@@ -70,7 +74,10 @@ def concatClips(clipPaths: list[str], outputPath: str, timeoutS: float = 300.0) 
             for p in clipPaths:
                 f.write(f"file '{Path(p).resolve()}'\n")
 
-        cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listPath,
+        ffmpegPath = getFfmpegPath()
+        if not ffmpegPath:
+            return makeResult(False, error="ffmpeg is not available", startTime=startTime)
+        cmd = [ffmpegPath, "-y", "-f", "concat", "-safe", "0", "-i", listPath,
                "-c", "copy", str(outputPath)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeoutS)
         Path(listPath).unlink(missing_ok=True)

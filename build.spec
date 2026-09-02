@@ -58,6 +58,7 @@ hiddenimports = [
     "insightface.model_zoo",
     "insightface.utils",
     "exifread",
+    "imageio_ffmpeg",
     "src",
     "src.playbooks",
     "src.scripts",

@@ -2,7 +2,6 @@
 """FindMeApp desktop entrypoint."""
 
 import json
-import shutil
 import subprocess
 import sys
 import threading
@@ -28,10 +27,11 @@ except ImportError:
 from PIL import Image, ImageTk
 
 from src.config import DATA_DIR
+from src.utils.ffmpeg import getFfmpegPath
 
 # ffmpeg is a system binary required by video clipping (A2) and highlight rendering (B).
 # Detect at startup so we can gracefully disable those features when missing.
-ffmpegAvailable = shutil.which("ffmpeg") is not None
+ffmpegAvailable = getFfmpegPath() is not None
 from src.playbooks.buildHighlight import runBuildHighlight
 from src.playbooks.findPhotos import runFindPhotos
 from src.playbooks.findVideos import runFindVideos
