@@ -16,20 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install tkinter (system)
-        run: brew install python-tk@3.11
+      # actions/setup-python builds do NOT include tkinter; use Homebrew Python
+      # + python-tk so the venv (and thus PyInstaller/build.spec) can import tkinter.
+      - name: Install Python 3.11 with tkinter (Homebrew)
+        run: brew install python@3.11 python-tk@3.11
 
       - name: Install dependencies
         run: |
-          python -m venv .venv
+          /opt/homebrew/opt/python@3.11/bin/python3.11 -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller==6.22.0
 
       - name: Download insightface model
         run: |
@@ -110,6 +108,7 @@ jobs:
           python -m venv .venv
           .venv\Scripts\python.exe -m pip install --upgrade pip
           .venv\Scripts\pip install -r requirements.txt
+          .venv\Scripts\pip install pyinstaller==6.22.0
 
       - name: Download insightface model
         run: |
