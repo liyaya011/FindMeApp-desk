@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- onnxruntime 启用 JIT 编译 -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- onnxruntime / 部分 Python 扩展使用 mmap 写入可执行内存 -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- PyInstaller 打包后含未签名 .dylib / ctypes 动态库 -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

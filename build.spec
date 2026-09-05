@@ -129,8 +129,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleDisplayName": "FindMeApp",
             "CFBundleName": "FindMeApp",
-            "CFBundleShortVersionString": "1.0.0",
-            "CFBundleVersion": "1.0.0",
+            "CFBundleShortVersionString": "1.0.1",
+            "CFBundleVersion": "1.0.1",
             "NSCameraUsageDescription": "FindMeApp 不使用摄像头。",
             "NSPhotoLibraryUsageDescription": "FindMeApp 需要读取照片库以匹配人脸。",
             "LSMinimumSystemVersion": "11.0",

@@ -11,7 +11,10 @@ permissions:
 
 jobs:
   # ====================== macOS Build ======================
+  # macOS releases are now built and notarized locally (Developer ID + notarytool),
+  # so the CI mac job only runs for manual smoke tests (workflow_dispatch).
   build-macos:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -139,3 +142,37 @@ jobs:
         with:
           files: dist/FindMeApp-Windows-x64.zip
           draft: true
+          body: |
+            # FindMeApp 桌面版 v1.0.1
+
+            📷 上传 1–3 张自拍 + 一批照片/视频，自动找出有你的照片、生成高光短视频、绘制 GPS 旅行回忆地图。
+
+            ## 下载
+
+            | 平台 | 文件 | 安装方式 |
+            |---|---|---|
+            | macOS（Apple Silicon） | `FindMeApp-Installer.dmg` | 双击打开，把 FindMeApp 拖入 Applications 文件夹即完成安装 |
+            | Windows 10/11 x64 | `FindMeApp-Windows-x64.zip` | 解压后双击 `FindMeApp.exe` 运行 |
+
+            内置人脸识别模型与 ffmpeg，无需额外安装任何组件。
+
+            ## ✅ macOS 已通过 Apple 公证
+
+            本版本已使用 Developer ID 签名并通过 Apple 公证（Notarized）。
+            **直接双击即可打开，无需任何额外设置**，不会再出现「无法验证」或「已损坏」提示。
+
+            ## Windows 说明
+
+            - 如杀毒软件误报，请选择「允许运行」（PyInstaller 打包的应用常见误报）；
+            - 数据保存在 `C:\Users\<你>\AppData\Local\FindMeApp`。
+
+            ## 系统要求
+
+            - macOS 11+（Apple Silicon / M 系列）
+            - Windows 10/11（64 位）
+
+            ## v1.0.1 更新内容
+
+            - macOS 版本升级为 Developer ID 签名 + Apple 公证版 DMG 安装包，双击即用、零弹窗
+            - 修复打包后 ffmpeg 依赖问题（内置 imageio-ffmpeg）
+            - 打包后数据写入用户目录，不再依赖只读的 .app 内部路径
