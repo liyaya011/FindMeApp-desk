@@ -26,6 +26,9 @@ def _resolveModelRoot():
       1. INSIGHTFACE_HOME env var
       2. PyInstaller _MEIPASS bundled assets (returns <_MEIPASS>/assets)
       3. Default ~/.insightface (will auto-download on first use)
+
+    In frozen (packaged) mode, missing bundled models is treated as fatal
+    because PyInstaller should have included them at build time.
     """
     envHome = os.environ.get("INSIGHTFACE_HOME")
     if envHome:
@@ -38,6 +41,14 @@ def _resolveModelRoot():
         bundled = Path(sys._MEIPASS) / "assets" / "models" / "buffalo_l"
         if bundled.exists() and any(bundled.glob("*.onnx")):
             return str(Path(sys._MEIPASS) / "assets")
+        # Frozen but no bundled model — this is a build-time mistake, not a recoverable one
+        onnx_count = len(list(bundled.glob("*.onnx"))) if bundled.exists() else 0
+        raise RuntimeError(
+            f"Packaged build is missing insightface models!\n"
+            f"  Expected: {bundled} (exists={bundled.exists()}, onnx_count={onnx_count})\n"
+            f"  This means the PyInstaller build didn't include the .onnx files.\n"
+            f"  Please rebuild with a complete buffalo_l model directory."
+        )
     return "~/.insightface"
 
 
@@ -64,9 +75,16 @@ def detectFaces(imagePath: str) -> dict:
     """
     startTime = time.time()
     try:
-        img = cv2.imread(str(imagePath))
+        img = _readImage(imagePath)
         if img is None:
-            return makeResult(False, error=f"Cannot read image: {imagePath}", startTime=startTime)
+            # Determine failure reason for better diagnostics
+            pathObj = Path(imagePath)
+            if not pathObj.exists():
+                errMsg = f"File not found: {imagePath}"
+            else:
+                errMsg = f"Cannot read image (unsupported format or corrupt): {imagePath} ({pathObj.stat().st_size if pathObj.exists() else 'N/A'} bytes)"
+            log.error("detectFaces: %s", errMsg)
+            return makeResult(False, error=errMsg, startTime=startTime)
 
         faces = _getApp().get(img)
         faceList = [
@@ -77,7 +95,34 @@ def detectFaces(imagePath: str) -> dict:
             }
             for face in faces
         ]
+        if not faceList:
+            log.warning("detectFaces: no face detected in %s (image shape=%s)", imagePath, img.shape)
         return makeResult(True, output={"faces": faceList, "count": len(faceList)}, startTime=startTime)
     except Exception as e:
         log.exception("detectFaces failed: %s", imagePath)
         return makeResult(False, error=str(e), startTime=startTime)
+
+
+def _readImage(imagePath: str):
+    """Read an image file, with HEIC fallback via Pillow + pillow-heif."""
+    img = cv2.imread(str(imagePath))
+    if img is not None:
+        return img
+    # cv2.imread failed — try Pillow for formats like HEIC that OpenCV can't read
+    ext = Path(imagePath).suffix.lower()
+    if ext in (".heic", ".heif"):
+        try:
+            from PIL import Image as PILImage
+            # pillow-heif must be installed; if missing, PIL will also fail on HEIC
+            with PILImage.open(imagePath) as pilImg:
+                # Convert Pillow RGB → BGR for OpenCV compatibility
+                import numpy as np
+                arr = np.array(pilImg.convert("RGB"))
+                img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            log.info("_readImage: loaded HEIC via Pillow+heif → shape=%s", img.shape)
+            return img
+        except ImportError:
+            log.error("_readImage: HEIC file but pillow-heif not installed: %s", imagePath)
+        except Exception as e:
+            log.error("_readImage: HEIC decode failed for %s: %s", imagePath, e)
+    return None

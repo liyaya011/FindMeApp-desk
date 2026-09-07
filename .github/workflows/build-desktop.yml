@@ -38,6 +38,30 @@ jobs:
           mkdir -p assets/models
           python -c "from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')"
 
+      - name: Verify model files
+        run: |
+          set -e
+          MODEL_DIR="assets/models/buffalo_l"
+          echo "Checking $MODEL_DIR ..."
+          if [ ! -d "$MODEL_DIR" ]; then
+            echo "❌ ERROR: model directory not found: $MODEL_DIR"
+            exit 1
+          fi
+          ONNX_COUNT=$(find "$MODEL_DIR" -name "*.onnx" | wc -l | tr -d ' ')
+          echo "Found $ONNX_COUNT .onnx files:"
+          ls -lh "$MODEL_DIR"/*.onnx | awk '{print "  " $5, $NF}'
+          if [ "$ONNX_COUNT" -lt 5 ]; then
+            echo "❌ ERROR: expected at least 5 .onnx files, got $ONNX_COUNT"
+            exit 1
+          fi
+          TOTAL_MB=$(du -sm "$MODEL_DIR" | cut -f1)
+          echo "Total model size: ${TOTAL_MB} MB"
+          if [ "$TOTAL_MB" -lt 200 ]; then
+            echo "❌ ERROR: model directory too small ($TOTAL_MB MB), download may be incomplete"
+            exit 1
+          fi
+          echo "✅ Model verification passed"
+
       - name: Build .app
         run: |
           source .venv/bin/activate
@@ -117,6 +141,31 @@ jobs:
         run: |
           mkdir -p assets\models
           .venv\Scripts\python.exe -c "from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')"
+        shell: pwsh
+
+      - name: Verify model files
+        run: |
+          $modelDir = "assets\models\buffalo_l"
+          Write-Host "Checking $modelDir ..."
+          if (-not (Test-Path $modelDir)) {
+            Write-Host "ERROR: model directory not found: $modelDir"
+            exit 1
+          }
+          $onnxFiles = Get-ChildItem $modelDir -Filter "*.onnx"
+          $count = $onnxFiles.Count
+          Write-Host "Found $count .onnx files:"
+          $onnxFiles | ForEach-Object { Write-Host "  $($_.Length/1MB.ToString('F0')) MB  $($_.Name)" }
+          if ($count -lt 5) {
+            Write-Host "ERROR: expected at least 5 .onnx files, got $count"
+            exit 1
+          }
+          $totalMB = [math]::Round(($onnxFiles | Measure-Object -Property Length -Sum).Sum / 1MB)
+          Write-Host "Total model size: $totalMB MB"
+          if ($totalMB -lt 200) {
+            Write-Host "ERROR: model directory too small ($totalMB MB), download may be incomplete"
+            exit 1
+          }
+          Write-Host "Model verification passed"
         shell: pwsh
 
       - name: Build .exe

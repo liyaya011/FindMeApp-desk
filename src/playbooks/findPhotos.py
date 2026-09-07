@@ -22,8 +22,13 @@ def _extractReferenceEmbeddings(refPaths: list[str]) -> tuple[list, list]:
     embeddings, errors = [], []
     for p in refPaths:
         r = detectFaces(p)
-        if not r["success"] or r["output"]["count"] == 0:
-            errors.append(f"No face in reference: {p}")
+        if not r["success"]:
+            errors.append(f"Detect failed ({Path(p).name}): {r.get('error', 'unknown')}")
+            log.error("_extractReferenceEmbeddings: detect failed for %s: %s", p, r.get('error'))
+            continue
+        if r["output"]["count"] == 0:
+            errors.append(f"No face in reference ({Path(p).name})")
+            log.warning("_extractReferenceEmbeddings: no face detected in %s", p)
             continue
         # Pick highest-confidence face from each reference photo
         bestFace = max(r["output"]["faces"], key=lambda f: f["det_score"])
