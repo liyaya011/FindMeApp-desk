@@ -6,36 +6,61 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   # ====================== macOS Build ======================
+  # macOS releases are now built and notarized locally (Developer ID + notarytool),
+  # so the CI mac job only runs for manual smoke tests (workflow_dispatch).
   build-macos:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install tkinter (system)
-        run: brew install python-tk@3.11
-
-      - name: Install ffmpeg
-        run: brew install ffmpeg
+      # actions/setup-python builds do NOT include tkinter; use Homebrew Python
+      # + python-tk so the venv (and thus PyInstaller/build.spec) can import tkinter.
+      - name: Install Python 3.11 with tkinter (Homebrew)
+        run: brew install python@3.11 python-tk@3.11
 
       - name: Install dependencies
         run: |
-          python -m venv .venv
+          /opt/homebrew/opt/python@3.11/bin/python3.11 -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller==6.22.0
 
       - name: Download insightface model
         run: |
           source .venv/bin/activate
           mkdir -p assets/models
           python -c "from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')"
+
+      - name: Verify model files
+        run: |
+          set -e
+          MODEL_DIR="assets/models/buffalo_l"
+          echo "Checking $MODEL_DIR ..."
+          if [ ! -d "$MODEL_DIR" ]; then
+            echo "❌ ERROR: model directory not found: $MODEL_DIR"
+            exit 1
+          fi
+          ONNX_COUNT=$(find "$MODEL_DIR" -name "*.onnx" | wc -l | tr -d ' ')
+          echo "Found $ONNX_COUNT .onnx files:"
+          ls -lh "$MODEL_DIR"/*.onnx | awk '{print "  " $5, $NF}'
+          if [ "$ONNX_COUNT" -lt 5 ]; then
+            echo "❌ ERROR: expected at least 5 .onnx files, got $ONNX_COUNT"
+            exit 1
+          fi
+          TOTAL_MB=$(du -sm "$MODEL_DIR" | cut -f1)
+          echo "Total model size: ${TOTAL_MB} MB"
+          if [ "$TOTAL_MB" -lt 200 ]; then
+            echo "❌ ERROR: model directory too small ($TOTAL_MB MB), download may be incomplete"
+            exit 1
+          fi
+          echo "✅ Model verification passed"
 
       - name: Build .app
         run: |
@@ -45,22 +70,54 @@ jobs:
 
       - name: Create ZIP artifact
         run: |
-          cd dist
-          zip -r FindMeApp-macOS.zip FindMeApp.app
+          ditto -c -k --sequesterRsrc --keepParent dist/FindMeApp.app dist/FindMeApp-macOS-arm64.zip
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: FindMeApp-macOS-arm64
-          path: dist/FindMeApp-macOS.zip
+          path: dist/FindMeApp-macOS-arm64.zip
           retention-days: 30
 
       - name: Attach to release (if tagged)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/FindMeApp-macOS.zip
+          files: dist/FindMeApp-macOS-arm64.zip
           draft: true
+          body: |
+            # FindMeApp 桌面版
+
+            📷 上传 1–3 张自拍 + 一批照片/视频，自动找出有你的照片、生成高光短视频、绘制 GPS 旅行回忆地图。
+
+            ## 下载
+
+            | 平台 | 文件 | 安装方式 |
+            |---|---|---|
+            | macOS（Apple Silicon） | `FindMeApp-macOS-arm64.zip` | 解压后拖入「应用程序」 |
+            | Windows 10/11 x64 | `FindMeApp-Windows-x64.zip` | 解压后运行 `FindMeApp.exe` |
+
+            内置人脸识别模型与 ffmpeg，无需额外安装任何组件。
+
+            ## macOS 首次打开
+
+            应用暂未签名，首次打开若提示「无法验证」或「已损坏」：
+
+            1. 右键 FindMeApp →「打开」→ 再点「打开」；
+            2. 若仍提示「已损坏」，在「终端」执行：
+               ```
+               xattr -cr /Applications/FindMeApp.app
+               ```
+
+            ## Windows 说明
+
+            - 如杀毒软件误报，请选择「允许运行」（PyInstaller 打包的应用常见误报）；
+            - 数据保存在 `C:\Users\<你>\AppData\Local\FindMeApp`。
+
+            ## 系统要求
+
+            - macOS 11+（Apple Silicon / M 系列）
+            - Windows 10/11（64 位）
 
   # ====================== Windows Build ======================
   build-windows:
@@ -73,20 +130,42 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install ffmpeg
-        run: choco install ffmpeg -y
-        continue-on-error: true
-
       - name: Install dependencies
         run: |
           python -m venv .venv
           .venv\Scripts\python.exe -m pip install --upgrade pip
           .venv\Scripts\pip install -r requirements.txt
+          .venv\Scripts\pip install pyinstaller==6.22.0
 
       - name: Download insightface model
         run: |
           mkdir -p assets\models
           .venv\Scripts\python.exe -c "from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')"
+        shell: pwsh
+
+      - name: Verify model files
+        run: |
+          $modelDir = "assets\models\buffalo_l"
+          Write-Host "Checking $modelDir ..."
+          if (-not (Test-Path $modelDir)) {
+            Write-Host "ERROR: model directory not found: $modelDir"
+            exit 1
+          }
+          $onnxFiles = Get-ChildItem $modelDir -Filter "*.onnx"
+          $count = $onnxFiles.Count
+          Write-Host "Found $count .onnx files:"
+          $onnxFiles | ForEach-Object { Write-Host "  $($_.Length/1MB.ToString('F0')) MB  $($_.Name)" }
+          if ($count -lt 5) {
+            Write-Host "ERROR: expected at least 5 .onnx files, got $count"
+            exit 1
+          }
+          $totalMB = [math]::Round(($onnxFiles | Measure-Object -Property Length -Sum).Sum / 1MB)
+          Write-Host "Total model size: $totalMB MB"
+          if ($totalMB -lt 200) {
+            Write-Host "ERROR: model directory too small ($totalMB MB), download may be incomplete"
+            exit 1
+          }
+          Write-Host "Model verification passed"
         shell: pwsh
 
       - name: Build .exe
@@ -112,3 +191,37 @@ jobs:
         with:
           files: dist/FindMeApp-Windows-x64.zip
           draft: true
+          body: |
+            # FindMeApp 桌面版 v1.0.1
+
+            📷 上传 1–3 张自拍 + 一批照片/视频，自动找出有你的照片、生成高光短视频、绘制 GPS 旅行回忆地图。
+
+            ## 下载
+
+            | 平台 | 文件 | 安装方式 |
+            |---|---|---|
+            | macOS（Apple Silicon） | `FindMeApp-Installer.dmg` | 双击打开，把 FindMeApp 拖入 Applications 文件夹即完成安装 |
+            | Windows 10/11 x64 | `FindMeApp-Windows-x64.zip` | 解压后双击 `FindMeApp.exe` 运行 |
+
+            内置人脸识别模型与 ffmpeg，无需额外安装任何组件。
+
+            ## ✅ macOS 已通过 Apple 公证
+
+            本版本已使用 Developer ID 签名并通过 Apple 公证（Notarized）。
+            **直接双击即可打开，无需任何额外设置**，不会再出现「无法验证」或「已损坏」提示。
+
+            ## Windows 说明
+
+            - 如杀毒软件误报，请选择「允许运行」（PyInstaller 打包的应用常见误报）；
+            - 数据保存在 `C:\Users\<你>\AppData\Local\FindMeApp`。
+
+            ## 系统要求
+
+            - macOS 11+（Apple Silicon / M 系列）
+            - Windows 10/11（64 位）
+
+            ## v1.0.1 更新内容
+
+            - macOS 版本升级为 Developer ID 签名 + Apple 公证版 DMG 安装包，双击即用、零弹窗
+            - 修复打包后 ffmpeg 依赖问题（内置 imageio-ffmpeg）
+            - 打包后数据写入用户目录，不再依赖只读的 .app 内部路径

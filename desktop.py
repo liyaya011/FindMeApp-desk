@@ -2,7 +2,7 @@
 """FindMeApp desktop entrypoint."""
 
 import json
-import shutil
+import logging
 import subprocess
 import sys
 import threading
@@ -13,6 +13,38 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 from uuid import uuid4
+
+# --- File logging (critical for packaged builds where console=False) ----------
+def _setupLogging():
+    """Write ALL logs (including uncaught exceptions) to DATA_DIR/app.log."""
+    from src.config import DATA_DIR as _DATA_DIR
+    try:
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
+        _logPath = _DATA_DIR / "app.log"
+        # 10 MB rotation, keep 3 backups
+        _handler = logging.handlers.RotatingFileHandler(
+            str(_logPath), maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        _handler.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s — %(message)s"
+        ))
+        logging.basicConfig(
+            level=logging.INFO,
+            handlers=[_handler, logging.StreamHandler(sys.stderr)],
+        )
+        # Also forward uncaught exceptions to the log file
+        def _excepthook(excType, excValue, excTb):
+            logging.critical("Uncaught exception", exc_info=(excType, excValue, excTb))
+        sys.excepthook = _excepthook
+        logging.info("FindMeApp starting (frozen=%s, python=%s)",
+                     getattr(sys, "frozen", False), sys.version)
+    except Exception as e:
+        # If logging setup fails, don't crash the app
+        print(f"[WARN] failed to setup file logging: {e}", file=sys.stderr)
+
+import logging.handlers
+_setupLogging()
+# -----------------------------------------------------------------------------
 
 try:
     import cv2
@@ -28,10 +60,11 @@ except ImportError:
 from PIL import Image, ImageTk
 
 from src.config import DATA_DIR
+from src.utils.ffmpeg import getFfmpegPath
 
 # ffmpeg is a system binary required by video clipping (A2) and highlight rendering (B).
 # Detect at startup so we can gracefully disable those features when missing.
-ffmpegAvailable = shutil.which("ffmpeg") is not None
+ffmpegAvailable = getFfmpegPath() is not None
 from src.playbooks.buildHighlight import runBuildHighlight
 from src.playbooks.findPhotos import runFindPhotos
 from src.playbooks.findVideos import runFindVideos
