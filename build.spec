@@ -60,14 +60,22 @@ try:
 except ImportError:
     pass
 
+# Auto-discover ALL scipy submodules — insightface pulls scipy.special,
+# scipy.spatial.distance, scipy.ndimage, scipy.stats, etc. via deep imports
+# that PyInstaller's static analysis can't see. Must list every submodule explicitly.
+_all_scipy = ["scipy"]
+_all_numpy = ["numpy"]
+try:
+    import scipy, numpy, pkgutil
+    _all_scipy += sorted(f"scipy.{m.name}" for m in pkgutil.iter_modules(scipy.__path__))
+    _all_numpy += sorted(f"numpy.{m.name}" for m in pkgutil.iter_modules(numpy.__path__))
+except Exception:
+    pass
+
 hiddenimports = [
     "tkinterdnd2",
     "PIL._tkinter_finder",  # PIL Tk image support
     "cv2",
-    "numpy",
-    "scipy",                 # insightface depends on scipy for math ops
-    "scipy.spatial.distance",
-    "scipy.ndimage",
     "onnxruntime",
     "insightface",
     "insightface.app",
@@ -79,7 +87,9 @@ hiddenimports = [
     "src.playbooks",
     "src.scripts",
     "src.utils",
-]
+] + _all_numpy + _all_scipy
+print(f"[build.spec] hiddenimports: {len(hiddenimports)} entries "
+      f"(numpy={len(_all_numpy)}, scipy={len(_all_scipy)})")
 
 # --- macOS-specific ---------------------------------------------------------
 if sys.platform == "darwin":
