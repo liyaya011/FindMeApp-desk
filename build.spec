@@ -12,7 +12,7 @@ Output:
 Bundles:
     - insightface buffalo_l model (~325MB) under assets/models/buffalo_l/
     - tkinterdnd2 shared libraries (platform-specific tcl/tk dnD lib)
-    - All Python deps from src/ and PIL/cv2/onnxruntime
+    - All Python deps from src/ and PIL/cv2/onnxruntime/scipy/matplotlib/...
 """
 import sys
 from pathlib import Path
@@ -21,16 +21,17 @@ block_cipher = None
 
 # Project root = directory containing this spec file
 ROOT = Path(SPECPATH)
-ASSETS_MODELS = str(ROOT / "assets" / "models")
 
+# ---------- datas: non-Python files to bundle ----------
 datas = [
     # Project source modules
     (str(ROOT / "src"), "src"),
-    # Frontend templates/static (used by web routes; harmless if unused in desktop bundle)
+    # Frontend templates/static (harmless if unused in desktop bundle)
     (str(ROOT / "frontend"), "frontend"),
 ]
 
-# Explicitly add each model file — PyInstaller's recursive directory scan doesn't pick up .onnx binaries.
+# Explicitly add each model file — PyInstaller's recursive dir scan
+# doesn't pick up .onnx binaries (they're treated as unknown extensions).
 model_root = ROOT / "assets" / "models" / "buffalo_l"
 if model_root.exists():
     onnx_files = sorted(model_root.glob("*.onnx"))
@@ -42,14 +43,14 @@ if model_root.exists():
     else:
         raise RuntimeError(
             f"[build.spec] ❌ CRITICAL: model_root exists but no .onnx files found in {model_root}!\n"
-            f"  You must download the buffalo_l model before building.\n"
-            f"  Run: mkdir -p assets/models && python -c \"from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')\""
+            f"  Download with: mkdir -p assets/models && python -c "
+            f"\"from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')\""
         )
 else:
     raise RuntimeError(
         f"[build.spec] ❌ CRITICAL: model_root not found: {model_root}\n"
-        f"  You must download the buffalo_l model before building.\n"
-        f"  Run: mkdir -p assets/models && python -c \"from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')\""
+        f"  Download with: mkdir -p assets/models && python -c "
+        f"\"from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')\""
     )
 
 # tkinterdnd2 ships platform-specific shared libs that PyInstaller doesn't auto-collect
@@ -60,21 +61,72 @@ try:
 except ImportError:
     pass
 
-# Auto-discover ALL scipy submodules — insightface pulls scipy.special,
-# scipy.spatial.distance, scipy.ndimage, scipy.stats, etc. via deep imports
-# that PyInstaller's static analysis can't see. Must list every submodule explicitly.
-_all_scipy = ["scipy"]
-_all_numpy = ["numpy"]
+# insightface data files (.pkl templates, mask images) — PyInstaller doesn't
+# auto-collect .pkl/.jpg/.png that are loaded at runtime via pkg_resources / pickle
 try:
-    import scipy, numpy, pkgutil
-    _all_scipy += sorted(f"scipy.{m.name}" for m in pkgutil.iter_modules(scipy.__path__))
-    _all_numpy += sorted(f"numpy.{m.name}" for m in pkgutil.iter_modules(numpy.__path__))
-except Exception:
+    import insightface
+    if_dir = Path(insightface.__file__).parent
+    if_data = if_dir / "data"
+    if if_data.exists():
+        datas.append((str(if_data), "insightface/data"))
+        print(f"[build.spec] ✅ Added insightface/data directory")
+except ImportError:
     pass
+
+# ---------- hiddenimports: every submodule of key packages ----------
+# insightface does deep, dynamic imports that PyInstaller's static analysis
+# cannot trace (scipy.special, matplotlib.cm, skimage.measure, etc.).
+# Use pkgutil at build time to enumerate EVERY submodule of each package,
+# so nothing is missed regardless of how deep the import chain goes.
+import pkgutil
+
+def _all_submodules(pkg_name: str) -> list[str]:
+    """Return [pkg_name, pkg_name.sub1, pkg_name.sub2, ...] for every submodule.
+
+    Uses filesystem walk instead of pkgutil.walk_packages because some
+    packages (e.g. matplotlib) have internal directories that walk_packages
+    tries to import and crashes on.
+    """
+    import os as _os
+    result = [pkg_name]
+    try:
+        pkg = __import__(pkg_name, fromlist=["*"])
+        pkg_dir = _os.path.dirname(pkg.__file__)
+        pkg_prefix = pkg_name + "."
+        for root, dirs, files in _os.walk(pkg_dir):
+            # Skip test / benchmark directories — they're not runtime deps
+            dirs[:] = [d for d in dirs if d not in ("tests", "test", "benchmarks", "__pycache__")]
+            rel_root = _os.path.relpath(root, pkg_dir)
+            rel_root = "" if rel_root == "." else rel_root.replace(_os.sep, ".")
+            for f in files:
+                if f.endswith(".py") and not f.startswith("_"):
+                    mod_name = f[:-3]
+                    full = pkg_prefix + (rel_root + "." + mod_name if rel_root else mod_name)
+                    result.append(full)
+                elif f.endswith(".py") and f == "__init__.py":
+                    # package init — already covered by the directory walk
+                    pass
+    except Exception as e:
+        print(f"[build.spec] ⚠️  Failed to enumerate submodules of {pkg_name}: {e}")
+    # De-duplicate and sort
+    return sorted(set(result))
+
+# Packages insightface / opencv transitively depend on.
+# DO NOT add these to excludes — they WILL be needed at runtime.
+_essential_pkgs = [
+    "numpy",          # every Python scientific package needs it
+    "scipy",          # insightface: spatial.distance, special, ndimage, stats...
+    "matplotlib",     # insightface model_zoo: cm, pyplot (skips if headless)
+    "skimage",        # insightface: measure, morphology (via albumentations)
+    "onnx",           # onnxruntime sometimes needs the onnx protobuf
+    "requests",       # insightface utils.download uses it
+    "tqdm",           # download progress bars
+    "albumentations", # image augmentations (runtime deps of trained models)
+]
 
 hiddenimports = [
     "tkinterdnd2",
-    "PIL._tkinter_finder",  # PIL Tk image support
+    "PIL._tkinter_finder",
     "cv2",
     "onnxruntime",
     "insightface",
@@ -87,11 +139,28 @@ hiddenimports = [
     "src.playbooks",
     "src.scripts",
     "src.utils",
-] + _all_numpy + _all_scipy
-print(f"[build.spec] hiddenimports: {len(hiddenimports)} entries "
-      f"(numpy={len(_all_numpy)}, scipy={len(_all_scipy)})")
+]
 
-# --- macOS-specific ---------------------------------------------------------
+for pkg in _essential_pkgs:
+    hiddenimports.extend(_all_submodules(pkg))
+
+print(f"[build.spec] hiddenimports: {len(hiddenimports)} entries")
+
+# ---------- excludes: packages we truly don't need ----------
+# ONLY exclude things that are definitely NOT imported by insightface/cv2/PIL.
+# Matplotlib/scipy/numpy/skimage/requests/tqdm/albumentations are FORBIDDEN here.
+_excludes_common = [
+    "pandas",
+    "pytest",
+    "IPython",
+    "jupyter",
+    "notebook",
+    "Cython",          # build-time only
+    "pip",             # build-time only
+    "mxnet",           # insightface default uses onnx, not mxnet
+]
+
+# ---------- macOS build ----------
 if sys.platform == "darwin":
     binaries = []
     a = Analysis(
@@ -102,14 +171,7 @@ if sys.platform == "darwin":
         hiddenimports=hiddenimports,
         hookspath=[],
         runtime_hooks=[],
-        excludes=[
-            "matplotlib",
-            "pandas",
-            "pytest",
-            "IPython",
-            "jupyter",
-            "notebook",
-        ],
+        excludes=_excludes_common,
         win_no_prefer_redirects=False,
         win_private_assemblies=False,
         cipher=block_cipher,
@@ -118,16 +180,14 @@ if sys.platform == "darwin":
     pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
     exe = EXE(
-        pyz,
-        a.scripts,
-        [],
+        pyz, a.scripts, [],
         exclude_binaries=True,
         name="FindMeApp",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
         upx=False,
-        console=False,  # .app bundle: no terminal window
+        console=False,
         disable_windowed_traceback=False,
         argv_emulation=False,
         target_arch=None,
@@ -137,11 +197,7 @@ if sys.platform == "darwin":
     )
 
     app = BUNDLE(
-        exe,
-        a.binaries,
-        a.zipfiles,
-        a.datas,
-        [],
+        exe, a.binaries, a.zipfiles, a.datas, [],
         name="FindMeApp.app",
         debug=False,
         bootloader_ignore_signals=False,
@@ -154,15 +210,15 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleDisplayName": "FindMeApp",
             "CFBundleName": "FindMeApp",
-            "CFBundleShortVersionString": "1.0.1",
-            "CFBundleVersion": "1.0.1",
+            "CFBundleShortVersionString": "1.0.2",
+            "CFBundleVersion": "1.0.2",
             "NSCameraUsageDescription": "FindMeApp 不使用摄像头。",
             "NSPhotoLibraryUsageDescription": "FindMeApp 需要读取照片库以匹配人脸。",
             "LSMinimumSystemVersion": "11.0",
         },
     )
 
-# --- Windows-specific ------------------------------------------------------
+# ---------- Windows build ----------
 else:
     a = Analysis(
         ["desktop.py"],
@@ -172,14 +228,7 @@ else:
         hiddenimports=hiddenimports,
         hookspath=[],
         runtime_hooks=[],
-        excludes=[
-            "matplotlib",
-            "pandas",
-            "pytest",
-            "IPython",
-            "jupyter",
-            "notebook",
-        ],
+        excludes=_excludes_common,
         win_no_prefer_redirects=False,
         win_private_assemblies=False,
         cipher=block_cipher,
@@ -188,9 +237,7 @@ else:
     pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
     exe = EXE(
-        pyz,
-        a.scripts,
-        [],
+        pyz, a.scripts, [],
         exclude_binaries=True,
         name="FindMeApp",
         debug=False,
@@ -207,12 +254,7 @@ else:
     )
 
     coll = COLLECT(
-        exe,
-        a.binaries,
-        a.zipfiles,
-        a.datas,
-        strip=False,
-        upx=False,
-        upx_exclude=[],
+        exe, a.binaries, a.zipfiles, a.datas,
+        strip=False, upx=False, upx_exclude=[],
         name="FindMeApp",
     )

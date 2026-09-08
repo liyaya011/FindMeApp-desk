@@ -3,6 +3,7 @@
 
 import json
 import logging
+import shutil
 import subprocess
 import sys
 import threading
@@ -2142,7 +2143,8 @@ navWrap.grid(row=1, column=0, sticky="new", padx=0)
 createNavItem(navWrap, "setup", "Setup").pack(fill=tk.X)
 createNavItem(navWrap, "find", "找我").pack(fill=tk.X)
 createNavItem(navWrap, "highlight", "一键成片").pack(fill=tk.X)
-createNavItem(navWrap, "travel", "轨迹回忆").pack(fill=tk.X)
+# 轨迹回忆功能本期发布暂不启用
+# createNavItem(navWrap, "travel", "轨迹回忆").pack(fill=tk.X)
 
 contentWrap = tk.Frame(headerFrame, bg=MAIN_BG)
 contentWrap.grid(row=0, column=1, sticky="nsew")
