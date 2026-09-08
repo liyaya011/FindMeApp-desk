@@ -39,16 +39,16 @@ if model_root.exists():
         for onnx_file in onnx_files:
             datas.append((str(onnx_file), "assets/models/buffalo_l"))
         total_mb = sum(f.stat().st_size for f in onnx_files) / 1024 / 1024
-        print(f"[build.spec] ✅ Added {len(onnx_files)} .onnx files ({total_mb:.0f} MB) from {model_root}")
+        print(f"[build.spec] [OK] Added {len(onnx_files)} .onnx files ({total_mb:.0f} MB) from {model_root}")
     else:
         raise RuntimeError(
-            f"[build.spec] ❌ CRITICAL: model_root exists but no .onnx files found in {model_root}!\n"
+            f"[build.spec] [ERROR] model_root exists but no .onnx files found in {model_root}!\n"
             f"  Download with: mkdir -p assets/models && python -c "
             f"\"from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')\""
         )
 else:
     raise RuntimeError(
-        f"[build.spec] ❌ CRITICAL: model_root not found: {model_root}\n"
+        f"[build.spec] [ERROR] model_root not found: {model_root}\n"
         f"  Download with: mkdir -p assets/models && python -c "
         f"\"from insightface.utils import ensure_available; ensure_available('models', 'buffalo_l', root='assets')\""
     )
@@ -69,7 +69,7 @@ try:
     if_data = if_dir / "data"
     if if_data.exists():
         datas.append((str(if_data), "insightface/data"))
-        print(f"[build.spec] ✅ Added insightface/data directory")
+        print(f"[build.spec] [OK] Added insightface/data directory")
 except ImportError:
     pass
 
@@ -107,7 +107,7 @@ def _all_submodules(pkg_name: str) -> list[str]:
                     # package init — already covered by the directory walk
                     pass
     except Exception as e:
-        print(f"[build.spec] ⚠️  Failed to enumerate submodules of {pkg_name}: {e}")
+        print(f"[build.spec] [WARN] Failed to enumerate submodules of {pkg_name}: {e}")
     # De-duplicate and sort
     return sorted(set(result))
 
