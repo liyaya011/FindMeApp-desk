@@ -63,7 +63,7 @@ def _getApp():
             root=modelRoot,
             providers=["CPUExecutionProvider"],
         )
-        _app.prepare(ctx_id=0, det_size=(640, 640))
+        _app.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.3)
         log.info("insightface buffalo_l model loaded")
     return _app
 
@@ -107,7 +107,12 @@ def _readImage(imagePath: str):
     """Read an image file, with HEIC fallback via Pillow + pillow-heif."""
     img = cv2.imread(str(imagePath))
     if img is not None:
-        return img
+        # cv2.imread does NOT honor EXIF Orientation. Most photo viewers do
+        # (Windows Photos, macOS Preview), so the user sees an upright image
+        # while the raw pixels may still be rotated (phone cameras commonly
+        # store portrait shots as landscape with Orientation=6).
+        # Without this, buffalo_l sees a sideways face and returns 0 detections.
+        return _applyExifOrientation(imagePath, img)
     # cv2.imread failed — try Pillow for formats like HEIC that OpenCV can't read
     ext = Path(imagePath).suffix.lower()
     if ext in (".heic", ".heif"):
@@ -126,3 +131,51 @@ def _readImage(imagePath: str):
         except Exception as e:
             log.error("_readImage: HEIC decode failed for %s: %s", imagePath, e)
     return None
+
+
+def _applyExifOrientation(imagePath: str, img) -> "np.ndarray":
+    """
+    Apply JPEG EXIF Orientation tag to the BGR image.
+    cv2.imread ignores EXIF orientation, but most photo viewers apply it on
+    display, so the user sees an upright face while the raw pixels may be
+    rotated 90/180/270°. Feeding those raw pixels to buffalo_l → 0 detections.
+
+    EXIF orientation values (TIFF spec) — value tells the viewer how to ROTATE
+    the raw pixels to display them upright; we apply the inverse transform:
+        1 = Horizontal (normal)                no transform
+        2 = Mirror horizontal                  flip LR
+        3 = Rotate 180°                        rotate 180
+        4 = Mirror vertical                    flip TB
+        5 = Mirror horizontal + rot 270 CW     flip LR + rot 90 CCW
+        6 = Rotate 90° CCW (raw → upright)     rotate 90 CW   (most common from phones)
+        7 = Mirror horizontal + rot 90 CCW     flip LR + rot 90 CW
+        8 = Rotate 90° CW                      rotate 90 CCW
+    """
+    try:
+        from PIL import Image as _PILImage
+        with _PILImage.open(imagePath) as _pil:
+            _exif = _pil.getexif()
+        if not _exif:
+            return img
+        _orient = _exif.get(0x0112)  # 274 = Orientation tag id
+        if not _orient or _orient == 1:
+            return img
+        if _orient == 2:
+            return cv2.flip(img, 1)
+        if _orient == 3:
+            return cv2.rotate(img, cv2.ROTATE_180)
+        if _orient == 4:
+            return cv2.flip(img, 0)
+        if _orient == 5:
+            img = cv2.flip(img, 1)
+            return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        if _orient == 6:
+            return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        if _orient == 7:
+            img = cv2.flip(img, 1)
+            return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        if _orient == 8:
+            return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    except Exception as e:
+        log.debug("_applyExifOrientation: %s (%s) for %s", type(e).__name__, e, imagePath)
+    return img
