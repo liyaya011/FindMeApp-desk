@@ -73,6 +73,54 @@ try:
 except ImportError:
     pass
 
+# ---------- binaries: DLLs PyInstaller may miss ----------
+# onnxruntime / opencv ship native DLLs that PyInstaller's binary dependency
+# analyser sometimes fails to track (especially on Windows, where DLLs live
+# in the package root or a sibling .libs/ directory instead of being linked).
+# Collect them explicitly to guarantee they end up next to the .exe.
+import os as _os
+
+def _collect_native_binaries(pkg_name: str) -> list[tuple[str, str]]:
+    """Walk a package directory and return every .dll / .so / .dylib as
+    (src_abs_path, dest_dir_relative_to_build_root)."""
+    binaries_out = []
+    try:
+        pkg = __import__(pkg_name, fromlist=["*"])
+        pkg_dir = Path(_os.path.dirname(pkg.__file__))
+        # Also check sibling .libs/ directory (numpy / scipy / onnxruntime
+        # on Windows use delvewheel and put DLLs there)
+        scan_dirs = [pkg_dir]
+        libs_dir = pkg_dir.parent / f"{pkg_name}.libs"
+        if libs_dir.exists():
+            scan_dirs.append(libs_dir)
+        # Also check pkg_dir / "lib" subdir
+        lib_sub = pkg_dir / "lib"
+        if lib_sub.exists():
+            scan_dirs.append(lib_sub)
+
+        for scan_root in scan_dirs:
+            for root, dirs, files in _os.walk(scan_root):
+                dirs[:] = [d for d in dirs if d != "__pycache__"]
+                for f in files:
+                    if f.lower().endswith((".dll", ".so", ".dylib", ".pyd")):
+                        src = str(Path(root) / f)
+                        # Destination: relative path under the built app dir
+                        rel = str(Path(root).relative_to(scan_root)).replace(_os.sep, "/")
+                        dest = f"{pkg_name}/{rel}" if rel != "." else pkg_name
+                        binaries_out.append((src, dest))
+    except Exception as e:
+        print(f"[build.spec] [WARN] Failed to collect binaries from {pkg_name}: {e}")
+    return binaries_out
+
+# Always collect these — they ship native code that PyInstaller misses on Windows
+_collect_from = ["onnxruntime", "cv2", "numpy", "scipy"]
+extra_binaries: list[tuple[str, str]] = []
+for _pkg in _collect_from:
+    _found = _collect_native_binaries(_pkg)
+    if _found:
+        extra_binaries.extend(_found)
+        print(f"[build.spec] [OK] Collected {len(_found)} native files from {_pkg}")
+
 # ---------- hiddenimports: every submodule of key packages ----------
 # insightface does deep, dynamic imports that PyInstaller's static analysis
 # cannot trace (scipy.special, matplotlib.cm, skimage.measure, etc.).
@@ -122,11 +170,15 @@ _essential_pkgs = [
     "requests",       # insightface utils.download uses it
     "tqdm",           # download progress bars
     "albumentations", # image augmentations (runtime deps of trained models)
+    "PIL",            # faceDetect._applyExifOrientation reads EXIF; PyInstaller
+                      # sometimes misses PIL.Image / PIL.ExifTags on Windows
 ]
 
 hiddenimports = [
     "tkinterdnd2",
     "PIL._tkinter_finder",
+    "PIL.Image",
+    "PIL.ExifTags",
     "cv2",
     "onnxruntime",
     "insightface",
@@ -162,7 +214,7 @@ _excludes_common = [
 
 # ---------- macOS build ----------
 if sys.platform == "darwin":
-    binaries = []
+    binaries = list(extra_binaries)
     a = Analysis(
         ["desktop.py"],
         pathex=[str(ROOT)],
@@ -220,10 +272,11 @@ if sys.platform == "darwin":
 
 # ---------- Windows build ----------
 else:
+    binaries = list(extra_binaries)
     a = Analysis(
         ["desktop.py"],
         pathex=[str(ROOT)],
-        binaries=[],
+        binaries=binaries,
         datas=datas,
         hiddenimports=hiddenimports,
         hookspath=[],
@@ -244,7 +297,7 @@ else:
         bootloader_ignore_signals=False,
         strip=False,
         upx=False,
-        console=False,
+        console=True,   # TEMP: set False after confirming face detection works
         disable_windowed_traceback=False,
         argv_emulation=False,
         target_arch=None,

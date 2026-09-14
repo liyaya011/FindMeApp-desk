@@ -21,7 +21,10 @@ def assessQuality(imagePath: str, blurThreshold: float = 100.0, minFaceSizePx: i
     """
     startTime = time.time()
     try:
-        img = cv2.imread(str(imagePath))
+        data = np.fromfile(str(imagePath), dtype=np.uint8)
+        if data.size == 0:
+            return makeResult(False, error=f"Empty file: {imagePath}", startTime=startTime)
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
         if img is None:
             return makeResult(False, error=f"Cannot read image: {imagePath}", startTime=startTime)
 

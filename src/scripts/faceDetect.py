@@ -86,6 +86,7 @@ def detectFaces(imagePath: str) -> dict:
             log.error("detectFaces: %s", errMsg)
             return makeResult(False, error=errMsg, startTime=startTime)
 
+        log.info("detectFaces: img loaded shape=%s dtype=%s path=%s", img.shape, img.dtype, imagePath)
         faces = _getApp().get(img)
         faceList = [
             {
@@ -96,7 +97,13 @@ def detectFaces(imagePath: str) -> dict:
             for face in faces
         ]
         if not faceList:
-            log.warning("detectFaces: no face detected in %s (image shape=%s)", imagePath, img.shape)
+            log.warning(
+                "detectFaces: no face detected in %s (shape=%s dtype=%s sys.platform=%s frozen=%s)",
+                imagePath, img.shape, img.dtype, sys.platform, getattr(sys, "frozen", False),
+            )
+        else:
+            log.info("detectFaces: found %d face(s), top det_score=%.3f", len(faceList),
+                     max(f["det_score"] for f in faceList))
         return makeResult(True, output={"faces": faceList, "count": len(faceList)}, startTime=startTime)
     except Exception as e:
         log.exception("detectFaces failed: %s", imagePath)
@@ -104,24 +111,34 @@ def detectFaces(imagePath: str) -> dict:
 
 
 def _readImage(imagePath: str):
-    """Read an image file, with HEIC fallback via Pillow + pillow-heif."""
-    img = cv2.imread(str(imagePath))
-    if img is not None:
-        # cv2.imread does NOT honor EXIF Orientation. Most photo viewers do
-        # (Windows Photos, macOS Preview), so the user sees an upright image
-        # while the raw pixels may still be rotated (phone cameras commonly
-        # store portrait shots as landscape with Orientation=6).
-        # Without this, buffalo_l sees a sideways face and returns 0 detections.
-        return _applyExifOrientation(imagePath, img)
-    # cv2.imread failed — try Pillow for formats like HEIC that OpenCV can't read
+    """
+    Read an image file robustly across platforms.
+
+    Uses cv2.imdecode(np.fromfile(...)) instead of cv2.imread() because:
+      - cv2.imread silently fails on Windows when the path contains
+        non-ASCII characters (Chinese, Japanese, etc.)
+      - np.fromfile + cv2.imdecode always works — it reads raw bytes
+        then lets OpenCV decode them, regardless of path encoding
+    """
     ext = Path(imagePath).suffix.lower()
+
+    # Try OpenCV first (covers JPG/PNG/BMP/TIFF/WEBP/...)
+    try:
+        data = np.fromfile(str(imagePath), dtype=np.uint8)
+        if data.size == 0:
+            return None
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        if img is not None:
+            # cv2.imdecode returns BGR by default — same convention as cv2.imread
+            return _applyExifOrientation(imagePath, img)
+    except Exception as e:
+        log.warning("_readImage: cv2.imdecode failed for %s: %s", imagePath, e)
+
+    # OpenCV couldn't handle it — try Pillow for formats like HEIC
     if ext in (".heic", ".heif"):
         try:
             from PIL import Image as PILImage
-            # pillow-heif must be installed; if missing, PIL will also fail on HEIC
             with PILImage.open(imagePath) as pilImg:
-                # Convert Pillow RGB → BGR for OpenCV compatibility
-                import numpy as np
                 arr = np.array(pilImg.convert("RGB"))
                 img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
             log.info("_readImage: loaded HEIC via Pillow+heif → shape=%s", img.shape)
@@ -135,8 +152,8 @@ def _readImage(imagePath: str):
 
 def _applyExifOrientation(imagePath: str, img) -> "np.ndarray":
     """
-    Apply JPEG EXIF Orientation tag to the BGR image.
-    cv2.imread ignores EXIF orientation, but most photo viewers apply it on
+    Apply JPEG/PNG EXIF Orientation tag to the BGR image.
+    cv2.imdecode ignores EXIF orientation, but most photo viewers apply it on
     display, so the user sees an upright face while the raw pixels may be
     rotated 90/180/270°. Feeding those raw pixels to buffalo_l → 0 detections.
 
@@ -156,10 +173,13 @@ def _applyExifOrientation(imagePath: str, img) -> "np.ndarray":
         with _PILImage.open(imagePath) as _pil:
             _exif = _pil.getexif()
         if not _exif:
+            log.info("_applyExifOrientation: no EXIF data for %s", Path(imagePath).name)
             return img
         _orient = _exif.get(0x0112)  # 274 = Orientation tag id
         if not _orient or _orient == 1:
+            log.info("_applyExifOrientation: orientation=%s (no-op) for %s", _orient, Path(imagePath).name)
             return img
+        log.info("_applyExifOrientation: applying orientation=%s fix for %s", _orient, Path(imagePath).name)
         if _orient == 2:
             return cv2.flip(img, 1)
         if _orient == 3:
@@ -177,5 +197,6 @@ def _applyExifOrientation(imagePath: str, img) -> "np.ndarray":
         if _orient == 8:
             return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
     except Exception as e:
-        log.debug("_applyExifOrientation: %s (%s) for %s", type(e).__name__, e, imagePath)
+        log.warning("_applyExifOrientation: %s (%s) for %s — returning unrotated image",
+                    type(e).__name__, e, Path(imagePath).name)
     return img
