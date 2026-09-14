@@ -73,53 +73,31 @@ try:
 except ImportError:
     pass
 
-# ---------- binaries: DLLs PyInstaller may miss ----------
-# onnxruntime / opencv ship native DLLs that PyInstaller's binary dependency
-# analyser sometimes fails to track (especially on Windows, where DLLs live
-# in the package root or a sibling .libs/ directory instead of being linked).
-# Collect them explicitly to guarantee they end up next to the .exe.
-import os as _os
+# ---------- binaries: use PyInstaller's collect_all for native-heavy pkgs ----------
+# onnxruntime / cv2 / numpy / scipy ship native DLLs (.pyd + .dll) that
+# PyInstaller's automatic binary-dependency analysis sometimes fails to find
+# on Windows (delvewheel layouts, sibling .libs/ dirs, etc.).
+#
+# collect_all() is the OFFICIAL, battle-tested helper from PyInstaller hooks.
+# It returns (datas, binaries, hiddenimports) and — critically — places all
+# binaries at the BUNDLE ROOT (e.g. _internal/onnxruntime.dll), which is in
+# Windows' default DLL search path. Placing them anywhere else risks
+# "Unable to import dependency onnxruntime" at runtime because the C extension
+# onnxruntime_pybind11_state.pyd cannot find onnxruntime.dll.
+from PyInstaller.utils.hooks import collect_all
 
-def _collect_native_binaries(pkg_name: str) -> list[tuple[str, str]]:
-    """Walk a package directory and return every .dll / .so / .dylib as
-    (src_abs_path, dest_dir_relative_to_build_root)."""
-    binaries_out = []
-    try:
-        pkg = __import__(pkg_name, fromlist=["*"])
-        pkg_dir = Path(_os.path.dirname(pkg.__file__))
-        # Also check sibling .libs/ directory (numpy / scipy / onnxruntime
-        # on Windows use delvewheel and put DLLs there)
-        scan_dirs = [pkg_dir]
-        libs_dir = pkg_dir.parent / f"{pkg_name}.libs"
-        if libs_dir.exists():
-            scan_dirs.append(libs_dir)
-        # Also check pkg_dir / "lib" subdir
-        lib_sub = pkg_dir / "lib"
-        if lib_sub.exists():
-            scan_dirs.append(lib_sub)
-
-        for scan_root in scan_dirs:
-            for root, dirs, files in _os.walk(scan_root):
-                dirs[:] = [d for d in dirs if d != "__pycache__"]
-                for f in files:
-                    if f.lower().endswith((".dll", ".so", ".dylib", ".pyd")):
-                        src = str(Path(root) / f)
-                        # Destination: relative path under the built app dir
-                        rel = str(Path(root).relative_to(scan_root)).replace(_os.sep, "/")
-                        dest = f"{pkg_name}/{rel}" if rel != "." else pkg_name
-                        binaries_out.append((src, dest))
-    except Exception as e:
-        print(f"[build.spec] [WARN] Failed to collect binaries from {pkg_name}: {e}")
-    return binaries_out
-
-# Always collect these — they ship native code that PyInstaller misses on Windows
-_collect_from = ["onnxruntime", "cv2", "numpy", "scipy"]
+_collect_all_pkgs = ["onnxruntime", "cv2", "numpy", "scipy"]
 extra_binaries: list[tuple[str, str]] = []
-for _pkg in _collect_from:
-    _found = _collect_native_binaries(_pkg)
-    if _found:
-        extra_binaries.extend(_found)
-        print(f"[build.spec] [OK] Collected {len(_found)} native files from {_pkg}")
+for _pkg in _collect_all_pkgs:
+    try:
+        _d, _b, _h = collect_all(_pkg)
+        if _d:
+            datas.extend(_d)
+        if _b:
+            extra_binaries.extend(_b)
+        print(f"[build.spec] [OK] collect_all({_pkg}): datas={len(_d)} binaries={len(_b)} hiddenimports={len(_h)}")
+    except Exception as e:
+        print(f"[build.spec] [WARN] collect_all({_pkg}) failed: {e}")
 
 # ---------- hiddenimports: every submodule of key packages ----------
 # insightface does deep, dynamic imports that PyInstaller's static analysis
@@ -181,6 +159,10 @@ hiddenimports = [
     "PIL.ExifTags",
     "cv2",
     "onnxruntime",
+    "onnxruntime.capi",
+    "onnxruntime.capi._pybind_state",
+    "onnxruntime.capi._ld_preload",
+    "onnxruntime.capi.onnxruntime_pybind11_state",
     "insightface",
     "insightface.app",
     "insightface.model_zoo",
