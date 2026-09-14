@@ -73,31 +73,32 @@ try:
 except ImportError:
     pass
 
-# ---------- binaries: use PyInstaller's collect_all for native-heavy pkgs ----------
-# onnxruntime / cv2 / numpy / scipy ship native DLLs (.pyd + .dll) that
-# PyInstaller's automatic binary-dependency analysis sometimes fails to find
-# on Windows (delvewheel layouts, sibling .libs/ dirs, etc.).
+# ---------- native binaries: rely on PyInstaller's official hooks ----------
+# IMPORTANT (v1.0.6 regression note):
+# v1.0.3 shipped with NO manual binary collection (binaries=[]) and onnxruntime
+# imported successfully on Windows: pyinstaller-hooks-contrib's official
+# hook-onnxruntime.py places onnxruntime.dll / onnxruntime_pybind11_state.pyd /
+# onnxruntime_providers_shared.dll at onnxruntime/capi/, which is correct.
 #
-# collect_all() is the OFFICIAL, battle-tested helper from PyInstaller hooks.
-# It returns (datas, binaries, hiddenimports) and — critically — places all
-# binaries at the BUNDLE ROOT (e.g. _internal/onnxruntime.dll), which is in
-# Windows' default DLL search path. Placing them anywhere else risks
-# "Unable to import dependency onnxruntime" at runtime because the C extension
-# onnxruntime_pybind11_state.pyd cannot find onnxruntime.dll.
-from PyInstaller.utils.hooks import collect_all
+# v1.0.4 (manual os.walk binary collection) and v1.0.5 (collect_all) both
+# regressed to "Unable to import dependency onnxruntime.". Verified facts:
+#   * the extracted v1.0.5 tree has the same 3 onnxruntime binaries as v1.0.3,
+#     byte-identical, at the same location;
+#   * the PYZ onnxruntime modules are identical (11 entries);
+#   * collect_all(include_py_files=True) additionally materializes 300+ loose
+#     .py files for onnxruntime/scipy/numpy/cv2 (v1.0.3 had zero for
+#     onnxruntime) — the only structural difference correlated with breakage.
+# Therefore we DO NOT pass any onnxruntime/cv2/numpy/scipy binaries or data via
+# the spec; the official hooks + hiddenimports below (v1.0.3 layout) are used.
+# Any DLL-search-path hardening is done at RUNTIME by pyi_ort_diag.py.
 
-_collect_all_pkgs = ["onnxruntime", "cv2", "numpy", "scipy"]
-extra_binaries: list[tuple[str, str]] = []
-for _pkg in _collect_all_pkgs:
-    try:
-        _d, _b, _h = collect_all(_pkg)
-        if _d:
-            datas.extend(_d)
-        if _b:
-            extra_binaries.extend(_b)
-        print(f"[build.spec] [OK] collect_all({_pkg}): datas={len(_d)} binaries={len(_b)} hiddenimports={len(_h)}")
-    except Exception as e:
-        print(f"[build.spec] [WARN] collect_all({_pkg}) failed: {e}")
+# Windows-only runtime hook: pre-warms onnxruntime with an explicit
+# AddDllDirectory(capi) call and, if import fails, dumps the FULL underlying
+# error (exact missing-DLL WinError) to console and %LOCALAPPDATA%\FindMeApp
+# \ort_diag.log. Not needed / not used on macOS.
+_win_runtime_hooks = (
+    [str(ROOT / "pyi_ort_diag.py")] if sys.platform == "win32" else []
+)
 
 # ---------- hiddenimports: every submodule of key packages ----------
 # insightface does deep, dynamic imports that PyInstaller's static analysis
@@ -159,10 +160,6 @@ hiddenimports = [
     "PIL.ExifTags",
     "cv2",
     "onnxruntime",
-    "onnxruntime.capi",
-    "onnxruntime.capi._pybind_state",
-    "onnxruntime.capi._ld_preload",
-    "onnxruntime.capi.onnxruntime_pybind11_state",
     "insightface",
     "insightface.app",
     "insightface.model_zoo",
@@ -196,11 +193,10 @@ _excludes_common = [
 
 # ---------- macOS build ----------
 if sys.platform == "darwin":
-    binaries = list(extra_binaries)
     a = Analysis(
         ["desktop.py"],
         pathex=[str(ROOT)],
-        binaries=binaries,
+        binaries=[],
         datas=datas,
         hiddenimports=hiddenimports,
         hookspath=[],
@@ -254,15 +250,14 @@ if sys.platform == "darwin":
 
 # ---------- Windows build ----------
 else:
-    binaries = list(extra_binaries)
     a = Analysis(
         ["desktop.py"],
         pathex=[str(ROOT)],
-        binaries=binaries,
+        binaries=[],
         datas=datas,
         hiddenimports=hiddenimports,
         hookspath=[],
-        runtime_hooks=[],
+        runtime_hooks=_win_runtime_hooks,
         excludes=_excludes_common,
         win_no_prefer_redirects=False,
         win_private_assemblies=False,

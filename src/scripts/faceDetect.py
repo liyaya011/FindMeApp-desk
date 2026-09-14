@@ -55,7 +55,22 @@ def _resolveModelRoot():
 def _getApp():
     global _app
     if _app is None:
-        import insightface
+        try:
+            import insightface
+        except ImportError:
+            # insightface.__init__ 把底层真实错误（如 pyd 找不到某个 DLL 的
+            # WinError）统一吞成 "Unable to import dependency onnxruntime."。
+            # 这里取出完整异常链并向上抛出，使界面红色提示能直接显示根因。
+            import traceback
+            detail = traceback.format_exc().strip()
+            log.error("insightface/onnxruntime import failed:\n%s", detail)
+            diagHint = ""
+            if sys.platform == "win32":
+                diagHint = "\n诊断日志：%LOCALAPPDATA%\\FindMeApp\\ort_diag.log"
+            raise ImportError(
+                "人脸引擎加载失败（insightface/onnxruntime 无法导入）。\n"
+                f"底层错误：\n{detail}{diagHint}"
+            )
         modelRoot = _resolveModelRoot()
         log.info("loading insightface buffalo_l from root=%s", modelRoot)
         _app = insightface.app.FaceAnalysis(
