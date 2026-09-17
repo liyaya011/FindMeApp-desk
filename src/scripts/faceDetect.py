@@ -83,14 +83,17 @@ def _getApp():
     return _app
 
 
-def detectFaces(imagePath: str) -> dict:
+def detectFaces(imagePath: str, *, applyExif: bool = True) -> dict:
     """
     Detect all faces in imagePath.
     output: list of {"bbox": [x1,y1,x2,y2], "embedding": list[float], "det_score": float}
+
+    applyExif=True  : read image with EXIF Orientation applied (display-correct pixels)
+    applyExif=False : read RAW pixels exactly as stored (no EXIF rotation)
     """
     startTime = time.time()
     try:
-        img = _readImage(imagePath)
+        img = _readImage(imagePath) if applyExif else _readImageRaw(imagePath)
         if img is None:
             # Determine failure reason for better diagnostics
             pathObj = Path(imagePath)
@@ -125,9 +128,10 @@ def detectFaces(imagePath: str) -> dict:
         return makeResult(False, error=str(e), startTime=startTime)
 
 
-def _readImage(imagePath: str):
+def _readImageRaw(imagePath: str):
     """
-    Read an image file robustly across platforms.
+    Read image file WITHOUT applying EXIF Orientation — raw pixels as stored.
+    Used by the dual-path matcher: try raw pixels first, then EXIF-rotated.
 
     Uses cv2.imdecode(np.fromfile(...)) instead of cv2.imread() because:
       - cv2.imread silently fails on Windows when the path contains
@@ -144,10 +148,9 @@ def _readImage(imagePath: str):
             return None
         img = cv2.imdecode(data, cv2.IMREAD_COLOR)
         if img is not None:
-            # cv2.imdecode returns BGR by default — same convention as cv2.imread
-            return _applyExifOrientation(imagePath, img)
+            return img
     except Exception as e:
-        log.warning("_readImage: cv2.imdecode failed for %s: %s", imagePath, e)
+        log.warning("_readImageRaw: cv2.imdecode failed for %s: %s", imagePath, e)
 
     # OpenCV couldn't handle it — try Pillow for formats like HEIC
     if ext in (".heic", ".heif"):
@@ -156,13 +159,29 @@ def _readImage(imagePath: str):
             with PILImage.open(imagePath) as pilImg:
                 arr = np.array(pilImg.convert("RGB"))
                 img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-            log.info("_readImage: loaded HEIC via Pillow+heif → shape=%s", img.shape)
+            log.info("_readImageRaw: loaded HEIC via Pillow+heif → shape=%s", img.shape)
             return img
         except ImportError:
-            log.error("_readImage: HEIC file but pillow-heif not installed: %s", imagePath)
+            log.error("_readImageRaw: HEIC file but pillow-heif not installed: %s", imagePath)
         except Exception as e:
-            log.error("_readImage: HEIC decode failed for %s: %s", imagePath, e)
+            log.error("_readImageRaw: HEIC decode failed for %s: %s", imagePath, e)
     return None
+
+
+def _readImage(imagePath: str):
+    """
+    Read an image file robustly across platforms, with EXIF Orientation applied
+    so pixels are display-correct (upright).
+    """
+    img = _readImageRaw(imagePath)
+    if img is None:
+        return None
+    # cv2.imdecode ignores EXIF orientation, but most photo viewers apply it on
+    # display, so the user sees an upright image while the raw pixels may still
+    # be rotated (phone cameras commonly store portrait shots as landscape with
+    # Orientation=6). Without this, buffalo_l sees a sideways face and returns
+    # 0 detections.
+    return _applyExifOrientation(imagePath, img)
 
 
 def _applyExifOrientation(imagePath: str, img) -> "np.ndarray":

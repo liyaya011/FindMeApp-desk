@@ -58,7 +58,7 @@ except ImportError:
     DND_FILES = None
     TkinterDnD = None
 
-from PIL import Image, ImageTk
+from PIL import Image, ImageOps, ImageTk
 
 from src.config import DATA_DIR
 from src.utils.ffmpeg import getFfmpegPath
@@ -145,7 +145,8 @@ class AppState:
 appState = AppState()
 previewWindow: tk.Toplevel | None = None
 previewImageRef: ImageTk.PhotoImage | None = None
-videoPreviewRef: ImageTk.PhotoImage | None = None
+videoFramePil: Image.Image | None = None
+videoCanvasPhoto: ImageTk.PhotoImage | None = None
 referencePreviewRefs: list[ImageTk.PhotoImage] = []
 photoPreviewRefs: list[ImageTk.PhotoImage] = []
 videoCapture = None
@@ -884,13 +885,12 @@ def clearClipResults():
 
 
 def clearHighlightPreview():
-    global videoPreviewRef, videoTotalFrames, videoFps
+    global videoFramePil, videoTotalFrames, videoFps
     stopVideoPlayback()
-    videoPreviewRef = None
+    videoFramePil = None
     videoTotalFrames = 0
     videoFps = 0.0
-    videoLabel.config(text="高光视频将在这里播放", image="")
-    videoLabel.image = None
+    _renderVideoFrame()
     videoProgressVar.set(0.0)
     videoProgressTextVar.set("00:00 / 00:00")
 
@@ -934,10 +934,24 @@ def startNewSession():
 
 
 
+def openDisplayImage(path: Path) -> Image.Image:
+    """
+    Open an image for UI display with EXIF Orientation applied.
+
+    PIL's Image.open() does NOT honor the EXIF Orientation tag, so portrait
+    phone photos (Orientation=6 etc.) render sideways — the raw pixels are
+    landscape even though the user sees an upright photo in every viewer.
+    ImageOps.exif_transpose() rotates/flips the pixels to match what the user
+    expects, matching the recognition pipeline's EXIF-aware read.
+    """
+    image = Image.open(path)
+    return ImageOps.exif_transpose(image)
+
+
 def showPhotoPreview(path: Path):
     global previewWindow, previewImageRef
     try:
-        image = Image.open(path)
+        image = openDisplayImage(path)
         image.thumbnail((980, 980))
         previewImageRef = ImageTk.PhotoImage(image)
         if previewWindow is None or not previewWindow.winfo_exists():
@@ -969,7 +983,7 @@ def displayReferenceThumbnails():
         thumbFrame.config(highlightbackground=SECTION_LINE, highlightcolor=SECTION_LINE)
         thumbFrame.grid(row=0, column=idx, sticky="nw", padx=(0, 10), pady=2)
         try:
-            image = Image.open(path)
+            image = openDisplayImage(path)
             image.thumbnail((REFERENCE_THUMB_SIZE, REFERENCE_THUMB_SIZE))
             photo = ImageTk.PhotoImage(image)
             thumbLabel = tk.Label(thumbFrame, image=photo, bg=PANEL_ALT_BG)
@@ -1035,7 +1049,7 @@ def renderPhotoResults(paths: list[Path]):
         thumbFrame.config(highlightbackground=SECTION_LINE, highlightcolor=SECTION_LINE)
         thumbFrame.grid(row=idx // columns, column=idx % columns, sticky="n", padx=6, pady=6)
         try:
-            image = Image.open(path)
+            image = openDisplayImage(path)
             image.thumbnail((PHOTO_THUMB_SIZE, PHOTO_THUMB_SIZE))
             photo = ImageTk.PhotoImage(image)
             thumbLabel = tk.Label(thumbFrame, image=photo, bg=PANEL_ALT_BG, cursor="hand2")
@@ -1229,8 +1243,37 @@ def refreshUploadPanels():
 
 
 
+def _renderVideoFrame():
+    """Scale the latest video frame to fully fit the player canvas (aspect kept)."""
+    global videoCanvasPhoto
+    canvas = videoCanvas
+    canvas.delete("all")
+    canvasW = canvas.winfo_width()
+    canvasH = canvas.winfo_height()
+    if canvasW < 50 or canvasH < 50:
+        return
+    if videoFramePil is None:
+        canvas.create_text(
+            canvasW // 2, canvasH // 2,
+            text="高光视频将在这里播放",
+            fill=LIGHT_PANEL_TEXT,
+            font=(FONT_FAMILY, 14),
+        )
+        return
+    image = videoFramePil.copy()
+    image.thumbnail((canvasW, canvasH))
+    photo = ImageTk.PhotoImage(image)
+    videoCanvasPhoto = photo
+    canvas.create_image(
+        (canvasW - image.width) // 2,
+        (canvasH - image.height) // 2,
+        anchor="nw",
+        image=photo,
+    )
+
+
 def showVideoPreview():
-    global videoPreviewRef, videoTotalFrames, videoFps
+    global videoFramePil, videoTotalFrames, videoFps
     if cv2 is None:
         return
 
@@ -1251,12 +1294,8 @@ def showVideoPreview():
     ret, frame = capture.read()
     if ret:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(frame)
-        image.thumbnail(VIDEO_PREVIEW_SIZE)
-        photo = ImageTk.PhotoImage(image)
-        videoPreviewRef = photo
-        videoLabel.config(image=photo, text="")
-        videoLabel.image = photo
+        videoFramePil = Image.fromarray(frame)
+        _renderVideoFrame()
     capture.release()
 
 
@@ -1270,12 +1309,8 @@ def stopVideoPlayback():
         except Exception:
             pass
     videoCapture = None
-    if videoPreviewRef is not None:
-        videoLabel.config(text="", image=videoPreviewRef)
-        videoLabel.image = videoPreviewRef
-    else:
-        videoLabel.config(text="高光视频将在这里播放", image="")
-        videoLabel.image = None
+    # Re-render the last frame (or the placeholder) at the current canvas size
+    _renderVideoFrame()
     if videoTotalFrames > 0 and videoFps > 0:
         videoProgressVar.set(0.0)
         videoProgressTextVar.set(f"00:00 / {formatClock(videoTotalFrames / videoFps)}")
@@ -1288,7 +1323,7 @@ def stopVideoPlayback():
 
 
 def updateVideoFrame():
-    global videoCapture, videoPlaying
+    global videoCapture, videoPlaying, videoFramePil
     if not videoPlaying or videoCapture is None:
         return
 
@@ -1300,11 +1335,8 @@ def updateVideoFrame():
 
     try:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(frame)
-        image.thumbnail(VIDEO_PREVIEW_SIZE)
-        photo = ImageTk.PhotoImage(image)
-        videoLabel.config(image=photo, text="")
-        videoLabel.image = photo
+        videoFramePil = Image.fromarray(frame)
+        _renderVideoFrame()
         currentFrame = int(videoCapture.get(cv2.CAP_PROP_POS_FRAMES) or 0)
         if videoTotalFrames > 0:
             videoProgressVar.set(min(100.0, currentFrame * 100.0 / videoTotalFrames))
@@ -1430,24 +1462,18 @@ def applyMediaSelection(paths: list[Path]):
 
 def selectMediaItems(droppedPaths: list[Path] | None = None):
     if droppedPaths is None:
-        choice = messagebox.askyesnocancel(
-            "选择素材类型",
-            "是 = 选择文件\n否 = 选择文件夹\n取消 = 返回",
+        # 默认定位在第一步参考自拍所在文件夹
+        initialDir = ""
+        if appState.referencePaths:
+            initialDir = str(appState.referencePaths[0].parent)
+        folder = filedialog.askdirectory(
+            title="选择包含素材的文件夹",
+            initialdir=initialDir,
         )
-        if choice is None:
-            return
-        if choice:
-            paths = filedialog.askopenfilenames(
-                title="选择要搜索的素材文件",
-                filetypes=[("Media files", "*.jpg *.jpeg *.png *.heic *.webp *.bmp *.tif *.tiff *.mp4 *.mov *.avi *.mkv *.m4v")],
-            )
-            droppedPaths = [Path(path) for path in paths]
+        if folder:
+            droppedPaths = [Path(folder)]
         else:
-            folder = filedialog.askdirectory(title="选择包含素材的文件夹")
-            if folder:
-                droppedPaths = [Path(folder)]
-            else:
-                return
+            return
     if not droppedPaths:
         return
     applyMediaSelection(droppedPaths)
@@ -1854,7 +1880,7 @@ def renderTravelPoints():
         thumbWrap.pack(pady=(8, 6))
         if photoPath and photoPath.exists():
             try:
-                image = Image.open(photoPath)
+                image = openDisplayImage(photoPath)
                 image.thumbnail((PHOTO_THUMB_SIZE, PHOTO_THUMB_SIZE))
                 photo = ImageTk.PhotoImage(image)
                 thumbLabel = tk.Label(thumbWrap, image=photo, bg=PANEL_ALT_BG, cursor="hand2")
@@ -2316,18 +2342,15 @@ previewCard.pack(fill=tk.BOTH, expand=True)
 previewCard.grid_rowconfigure(0, weight=1)
 previewCard.grid_columnconfigure(0, weight=1)
 
-videoLabel = tk.Label(
+videoCanvas = tk.Canvas(
     previewCard,
-    text="高光视频将在这里播放",
     bg=LIGHT_PANEL_BG,
-    fg=LIGHT_PANEL_TEXT,
-    anchor="center",
-    justify=tk.CENTER,
-    height=20,
     highlightthickness=1,
+    highlightbackground=LIGHT_PANEL_BORDER,
+    highlightcolor=LIGHT_PANEL_BORDER,
 )
-videoLabel.config(highlightbackground=LIGHT_PANEL_BORDER, highlightcolor=LIGHT_PANEL_BORDER)
-videoLabel.grid(row=0, column=0, sticky="nsew")
+videoCanvas.grid(row=0, column=0, sticky="nsew")
+videoCanvas.bind("<Configure>", lambda _e: _renderVideoFrame())
 
 videoProgressWrap = tk.Frame(previewCard, bg=PANEL_BG)
 videoProgressWrap.grid(row=1, column=0, sticky="ew", pady=(14, 0))

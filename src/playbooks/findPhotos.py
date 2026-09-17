@@ -36,6 +36,27 @@ def _extractReferenceEmbeddings(refPaths: list[str]) -> tuple[list, list]:
     return embeddings, errors
 
 
+def _matchPhotoFaces(photoPath: str, refEmbeddings: list, threshold: float,
+                     applyExif: bool) -> tuple[bool, float | None, int]:
+    """
+    Detect faces in one photo (raw pixels or EXIF-rotated) and check whether
+    any face matches the references. Returns (matched, bestDist, faceCount).
+    """
+    r = detectFaces(photoPath, applyExif=applyExif)
+    if not r["success"] or r["output"]["count"] == 0:
+        return False, None, 0
+
+    bestDist: float | None = None
+    for face in r["output"]["faces"]:
+        mr = matchFace(face["embedding"], refEmbeddings, threshold)
+        if mr["success"] and mr["output"]["matched"]:
+            return True, mr["output"]["best_dist"], r["output"]["count"]
+        dist = mr["output"].get("best_dist") if mr["success"] else None
+        if dist is not None and (bestDist is None or dist < bestDist):
+            bestDist = dist
+    return False, bestDist, r["output"]["count"]
+
+
 def runFindPhotos(referencePhotoPaths: list[str], targetPhotoPaths: list[str],
                    outputDir: str, threshold: float = FACE_SIMILARITY_THRESHOLD) -> dict:
     startTime = time.time()
@@ -49,19 +70,26 @@ def runFindPhotos(referencePhotoPaths: list[str], targetPhotoPaths: list[str],
 
     matchedPaths, unmatchedPaths = [], []
     for photoPath in targetPhotoPaths:
-        r = detectFaces(photoPath)
-        if not r["success"] or r["output"]["count"] == 0:
-            unmatchedPaths.append(photoPath)
-            continue
-
-        photoMatched = False
-        for face in r["output"]["faces"]:
-            mr = matchFace(face["embedding"], refEmbeddings, threshold)
-            if mr["success"] and mr["output"]["matched"]:
-                photoMatched = True
-                break
+        # Dual-path match: try RAW pixels first (stable, matches pre-EXIF behavior);
+        # if no match, retry with EXIF Orientation applied (fixes sideways phone
+        # photos that yield 0 faces in raw form). Take the better result.
+        photoMatched, bestDist, faceCount = _matchPhotoFaces(
+            photoPath, refEmbeddings, threshold, applyExif=False)
+        matchedVia = "raw"
+        if not photoMatched:
+            exifMatched, exifDist, exifFaceCount = _matchPhotoFaces(
+                photoPath, refEmbeddings, threshold, applyExif=True)
+            if exifMatched:
+                photoMatched, bestDist = True, exifDist
+                matchedVia = "exif"
+                faceCount = exifFaceCount
+            elif exifDist is not None and (bestDist is None or exifDist < bestDist):
+                bestDist = exifDist
+                faceCount = exifFaceCount
 
         if photoMatched:
+            log.info("A1: %s matched via %s pixels (best_dist=%.3f, faces=%d)",
+                     Path(photoPath).name, matchedVia, bestDist if bestDist is not None else -1.0, faceCount)
             dest = Path(outputDir) / Path(photoPath).name
             shutil.copy2(photoPath, dest)
             matchedPaths.append(str(dest))

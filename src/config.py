@@ -43,3 +43,10 @@ MIN_FACE_SIZE_PX = 40              # face bounding box min dimension
 MAX_HIGHLIGHT_PHOTOS = 20
 MAX_HIGHLIGHT_DURATION_S = 60
 PHOTO_SLIDE_DURATION_S = 3         # each photo on screen in slideshow
+
+# Highlight video render — ALL concatenated streams must share one canvas/fps,
+# otherwise stream-copy concat produces a corrupt file (ghosting / duplicate
+# frames in players).
+HIGHLIGHT_WIDTH = 1920
+HIGHLIGHT_HEIGHT = 1080
+HIGHLIGHT_FPS = 30
