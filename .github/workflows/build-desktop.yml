@@ -86,7 +86,7 @@ jobs:
           files: dist/FindMeApp-macOS-arm64.zip
           draft: true
           body: |
-            # FindMeApp 桌面版
+            # FindMeApp 桌面版 v1.0.7
 
             📷 上传 1–3 张自拍 + 一批照片/视频，自动找出有你的照片、生成高光短视频、绘制 GPS 旅行回忆地图。
 
@@ -94,20 +94,26 @@ jobs:
 
             | 平台 | 文件 | 安装方式 |
             |---|---|---|
-            | macOS（Apple Silicon） | `FindMeApp-macOS-arm64.zip` | 解压后拖入「应用程序」 |
-            | Windows 10/11 x64 | `FindMeApp-Windows-x64.zip` | 解压后运行 `FindMeApp.exe` |
+            | macOS（Apple Silicon） | `FindMeApp-Installer.dmg` | 双击挂载，把 FindMeApp 拖入应用程序 |
+            | macOS（Apple Silicon） | `FindMeApp-macOS-arm64.zip` | 解压后拖入「应用程序」（如 DMG 不可用时备用） |
+            | **macOS（Intel / x86_64）** | `FindMeApp-macOS-x64.zip` | 解压后右键→打开（adhoc 签名），见下方说明 |
+            | Windows 10/11 x64 | `FindMeApp-Windows-x64.zip` | 解压后双击 `FindMeApp.exe` |
 
             内置人脸识别模型与 ffmpeg，无需额外安装任何组件。
 
-            ## macOS 首次打开
+            ## ✅ macOS（Apple Silicon）已通过 Apple 公证
 
-            应用暂未签名，首次打开若提示「无法验证」或「已损坏」：
+            `FindMeApp-Installer.dmg` 已使用 Developer ID 签名并通过 Apple 公证。
+            **直接双击即可打开**，不会再出现「无法验证」或「已损坏」提示。
 
-            1. 右键 FindMeApp →「打开」→ 再点「打开」；
-            2. 若仍提示「已损坏」，在「终端」执行：
-               ```
-               xattr -cr /Applications/FindMeApp.app
-               ```
+            ## ⚠️ macOS（Intel）首次打开
+
+            x64 zip 仅 adhoc 签名，未公证。首次打开被 Gatekeeper 拦截时三选一：
+            - 右键 app → 打开 → 弹窗再点打开
+            - `xattr -dr com.apple.quarantine ~/Downloads/FindMeApp.app && open ~/Downloads/FindMeApp.app`
+            - 系统设置 → 隐私与安全性 → 仍要打开
+
+            > 报「Mac 不支持此应用程序」= 下错版本。Intel/x86_64 Mac 只能下 `-x64.zip`，下 `-arm64` / `.dmg` 都不行。
 
             ## Windows 说明
 
@@ -116,8 +122,16 @@ jobs:
 
             ## 系统要求
 
-            - macOS 11+（Apple Silicon / M 系列）
+            - macOS 11+（Apple Silicon / M 系列 推荐，Intel Mac 需用 x64 zip）
             - Windows 10/11（64 位）
+
+            ## v1.0.7 更新内容
+
+            - **人脸识别双路径匹配**（faceDetect/findPhotos）：
+              拆分 `_readImageRaw` 与 `_readImage(EXIF)`，匹配先试原像素，不匹配再用 EXIF 旋转图重试，恢复 v1.0.3 修复前的 9/10 素材识别结果（IMG_4465/IMG_6284 等重新匹配）
+            - **界面图片 EXIF 转正**（desktop.py）：新增 `openDisplayImage()` 统一 `ImageOps.exif_transpose()`，预览/参考/结果/轨迹缩略图全部转正，竖拍图不再横放
+            - **高光视频拼接损坏修复**（config/videoMerge）：统一 1920×1080@30 规格，`concatClips` 改用 concat filter 重编码，修复混合分辨率/帧率流复制导致的帧残留与重复画面
+            - **视频播放器自适应**（desktop.py）：Label 改为 Canvas 自动等比缩放居中，窗口缩放自动重排
 
   # ====================== Windows Build ======================
   build-windows:
@@ -192,7 +206,7 @@ jobs:
           files: dist/FindMeApp-Windows-x64.zip
           draft: true
           body: |
-            # FindMeApp 桌面版 v1.0.2
+            # FindMeApp 桌面版 v1.0.7
 
             📷 上传 1–3 张自拍 + 一批照片/视频，自动找出有你的照片、生成高光短视频、绘制 GPS 旅行回忆地图。
 
@@ -200,15 +214,26 @@ jobs:
 
             | 平台 | 文件 | 安装方式 |
             |---|---|---|
-            | macOS（Apple Silicon） | `FindMeApp-Installer.dmg` | 双击打开，把 FindMeApp 拖入 Applications 文件夹即完成安装 |
-            | Windows 10/11 x64 | `FindMeApp-Windows-x64.zip` | 解压后双击 `FindMeApp.exe` 运行 |
+            | macOS（Apple Silicon） | `FindMeApp-Installer.dmg` | 双击挂载，把 FindMeApp 拖入应用程序 |
+            | macOS（Apple Silicon） | `FindMeApp-macOS-arm64.zip` | 解压后拖入「应用程序」（如 DMG 不可用时备用） |
+            | **macOS（Intel / x86_64）** | `FindMeApp-macOS-x64.zip` | 解压后右键→打开（adhoc 签名），见下方说明 |
+            | Windows 10/11 x64 | `FindMeApp-Windows-x64.zip` | 解压后双击 `FindMeApp.exe` |
 
             内置人脸识别模型与 ffmpeg，无需额外安装任何组件。
 
-            ## ✅ macOS 已通过 Apple 公证
+            ## ✅ macOS（Apple Silicon）已通过 Apple 公证
 
-            本版本已使用 Developer ID 签名并通过 Apple 公证（Notarized）。
-            **直接双击即可打开，无需任何额外设置**，不会再出现「无法验证」或「已损坏」提示。
+            `FindMeApp-Installer.dmg` 已使用 Developer ID 签名并通过 Apple 公证。
+            **直接双击即可打开**，不会再出现「无法验证」或「已损坏」提示。
+
+            ## ⚠️ macOS（Intel）首次打开
+
+            x64 zip 仅 adhoc 签名，未公证。首次打开被 Gatekeeper 拦截时三选一：
+            - 右键 app → 打开 → 弹窗再点打开
+            - `xattr -dr com.apple.quarantine ~/Downloads/FindMeApp.app && open ~/Downloads/FindMeApp.app`
+            - 系统设置 → 隐私与安全性 → 仍要打开
+
+            > 报「Mac 不支持此应用程序」= 下错版本。Intel/x86_64 Mac 只能下 `-x64.zip`，下 `-arm64` / `.dmg` 都不行。
 
             ## Windows 说明
 
@@ -217,12 +242,13 @@ jobs:
 
             ## 系统要求
 
-            - macOS 11+（Apple Silicon / M 系列）
+            - macOS 11+（Apple Silicon / M 系列 推荐，Intel Mac 需用 x64 zip）
             - Windows 10/11（64 位）
 
-            ## v1.0.2 更新内容
+            ## v1.0.7 更新内容
 
-            - 修复打包后人脸识别崩溃：`No module named 'scipy'`（自动打包 scipy/numpy 全部子模块）
-            - 修复 insightface 依赖链缺失与 shutil 未导入问题
-            - 临时禁用轨迹回忆（地图回放）功能，后续版本回归
-            - 修复 Windows CI 构建时 build.spec 内 emoji 导致 cp1252 编码报错（稳定性）
+            - **人脸识别双路径匹配**（faceDetect/findPhotos）：
+              拆分 `_readImageRaw` 与 `_readImage(EXIF)`，匹配先试原像素，不匹配再用 EXIF 旋转图重试，恢复 v1.0.3 修复前的 9/10 素材识别结果（IMG_4465/IMG_6284 等重新匹配）
+            - **界面图片 EXIF 转正**（desktop.py）：新增 `openDisplayImage()` 统一 `ImageOps.exif_transpose()`，预览/参考/结果/轨迹缩略图全部转正，竖拍图不再横放
+            - **高光视频拼接损坏修复**（config/videoMerge）：统一 1920×1080@30 规格，`concatClips` 改用 concat filter 重编码，修复混合分辨率/帧率流复制导致的帧残留与重复画面
+            - **视频播放器自适应**（desktop.py）：Label 改为 Canvas 自动等比缩放居中，窗口缩放自动重排
